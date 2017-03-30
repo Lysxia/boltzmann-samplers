@@ -7,4 +7,4 @@ class Monad m => MonadRandomLike m where
   incr :: m ()
   incr = return ()
 
-  word64 :: Word64 -> m Word64
+  word64 :: m Word64
