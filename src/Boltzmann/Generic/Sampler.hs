@@ -44,10 +44,16 @@ instance {-# OVERLAPPABLE #-}
   , Generable' a d e
   ) => Generable' a d (z ': e)
   where
-  generate' pd _ = generate' pd (Proxy :: Proxy e)
+  generate' pd pe = generate' pd (proxyTail pe)
+
+proxyTail :: proxy (z ': e) -> Proxy (e :: [(*,*)])
+proxyTail _ = Proxy
 
 instance {-# OVERLAPPING #-} Generable b d => Generable' a d ('(b, a) ': e) where
-  generate' _ _ (f, o) = f <$> generate o
+  generate' pd _ (f, o) = f <$> generate o
+
+instance Generable_ a d => Generable' a d '[] where
+  generate' pd _ = generate_ pd
 
 class Generable_ a (d :: [(*, *)]) where
   type Oracle_ a (d :: [(*, *)])
