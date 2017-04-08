@@ -88,7 +88,7 @@ class Sized e => Equation e where
   type Injection e (d :: [(k, *)]) :: Constraint
 
   rhs_
-    :: (Injection e d, KnownNat (Index a d))
+    :: (Injection e d, KnownNat (Index a d), b ~ Lookup a d)
     => proxy a -> proxy' d
     -> F e a b -> e b
   equation_
@@ -96,9 +96,11 @@ class Sized e => Equation e where
     => proxy a -> proxy' d
     -> e b -> F e a b
 
+type Assoc a d b = (KnownNat (Index a d), Lookup a d ~ b)
+
 rhs
   :: forall a d e b
-  .  (Equation e, Injection e d, KnownNat (Index a d))
+  .  (Equation e, Injection e d, Assoc a d b)
   => F e a b -> e b
 rhs = rhs_ (Proxy @a) (Proxy @d)
 
@@ -115,16 +117,25 @@ lookupSys
     -> e (Lookup a d)
 lookupSys = rhs @a @d . lookupSystem_ @a
 
-instance Num x => Equation (GFunction x) where
-  type F (GFunction x) a b = x
-  type Injection (GFunction x) d = (?injection :: (x, System_ (GFunction x) d))
+newtype Inject e a = Inject (e a)
+  deriving (Functor, Applicative, Alternative, Sized)
 
-  rhs_ (_ :: proxy a) _ _ =
-    (GFunction . const . lookupSystem_ @a . snd) ?injection
+instance Equation e => Equation (Inject e) where
+  type F (Inject e) a b = F e a b
+  type Injection (Inject e) d = (?injection :: System_ e d, Injection e d)
 
-  equation_ _ _ (GFunction f) = (f . fst) ?injection
+  rhs_ (a :: proxy a) (d :: proxy' d) _ =
+    Inject (rhs_ a d (lookupSystem_ @a @d ?injection))
+  equation_ a d (Inject e) = equation_ a d e
 
 newtype GFunction x a = GFunction (x -> x)
+
+instance Num x => Equation (GFunction x) where
+  type F (GFunction x) a b = x
+  type Injection (GFunction x) d = (?gfx :: x)
+
+  rhs_ _ _ = GFunction . const
+  equation_ _ _ (GFunction f) = f ?gfx
 
 instance Functor (GFunction x) where
   fmap f (GFunction x) = GFunction x
@@ -144,12 +155,12 @@ instance Num x => Sized (GFunction x) where
 applySystem
   :: forall x d
   .  Num x
-  => (Injection (GFunction x) d => System_ (GFunction x) d)
+  => (Injection (Inject (GFunction x)) d => System_ (Inject (GFunction x)) d)
   -> x -> Vector x -> Vector x
 applySystem f x xs =
-  coerceToVector (let ?injection = (x, coerceFromVector xs) in f)
+  coerceToVector (let ?injection = coerceFromVector xs ; ?gfx = x in f)
   where
-    coerceToVector :: System_ (GFunction x) d -> Vector x
+    coerceToVector :: System_ (Inject (GFunction x)) d -> Vector x
     coerceFromVector :: Vector x -> System_ (GFunction x) d
     coerceToVector = unsafeCoerce
     coerceFromVector = unsafeCoerce
