@@ -44,6 +44,7 @@ library
     ad,
     base >= 4.9 && < 5,
     containers,
+    constraints >= 0.9,
     ghc-prim,
     hashable,
     hmatrix,

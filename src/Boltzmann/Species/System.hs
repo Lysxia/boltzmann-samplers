@@ -7,6 +7,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -18,6 +19,7 @@
 module Boltzmann.Species.System where
 
 import Control.Applicative
+import Data.Constraint.Forall
 import Data.Foldable (asum)
 import Data.List (inits)
 import Data.Proxy
@@ -151,22 +153,44 @@ instance Num x => Alternative (GFunction x) where
 instance Num x => Sized (GFunction x) where
   pay (GFunction f) = GFunction (\x -> x * f x)
 
+class (x ~ F e a b) => EqualsF (e :: * -> *) x a b
+instance (x ~ F e a b) => EqualsF e x a b
+
 -- Quite unsafe.
 applySystem
-  :: forall x d
-  .  Num x
-  => (Injection (Inject (GFunction x)) d => System_ (Inject (GFunction x)) d)
-  -> x -> Vector x -> Vector x
-applySystem f x xs =
-  coerceToVector (let ?injection = coerceFromVector xs ; ?gfx = x in f)
+  :: forall e d x
+  .  (ForallV (EqualsF e x), Injection e d)
+  => (Injection (Inject e) d => System_ (Inject e) d)
+  -> Vector x -> Vector x
+applySystem f xs =
+  coerceToVector (let ?injection = coerceFromVector xs in f)
   where
-    coerceToVector :: System_ (Inject (GFunction x)) d -> Vector x
-    coerceFromVector :: Vector x -> System_ (GFunction x) d
+    coerceToVector :: System_ (Inject e) d -> Vector x
+    coerceFromVector :: Vector x -> System_ e d
     coerceToVector = unsafeCoerce
     coerceFromVector = unsafeCoerce
 
-newtype Pointed f a
-  = Pointed [f a]  -- ^ Infinite or empty lists only.
+type IGF x = Inject (GFunction x)
+
+applySystemGF
+  :: forall d x
+  .  Num x
+  => (Injection (IGF x) d => System_ (IGF x) d)
+  -> x -> Vector x -> Vector x
+applySystemGF f x = let ?gfx = x in applySystem @(GFunction x) @d f
+
+type PGF x = Pointed (GFunction x)
+type IPGF x = Inject (PGF x)
+
+applySystemPGF
+  :: forall d x
+  .  Num x
+  => (Injection (IPGF x) d => System_ (IPGF x) d)
+  -> x -> Vector [x] -> Vector [x]
+applySystemPGF f x = let ?gfx = x in applySystem @(PGF x) @d f
+
+-- | Truncates
+newtype Pointed f a = Pointed [f a]
 
 takePointed :: Int -> Pointed f a -> [f a]
 takePointed n (Pointed f) = take n f
@@ -192,6 +216,13 @@ instance Sized f => Sized (Pointed f) where
   pay (Pointed fs) = Pointed self
     where
       self = zipWith' (<|>) (empty : self) (fmap pay fs)
+
+instance Equation f => Equation (Pointed f) where
+  type F (Pointed f) a b = [F f a b]
+  type Injection (Pointed f) d = Injection f d
+
+  rhs_ a d = Pointed . fmap (rhs_ a d)
+  equation_ a d (Pointed f) = fmap (equation_ a d) f
 
 zipWith' :: (a -> a -> a) -> [a] -> [a] -> [a]
 zipWith' f (x : xs) ~(y : ys) = f x y : zipWith' f xs ys

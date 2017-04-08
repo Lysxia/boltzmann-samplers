@@ -11,7 +11,7 @@ import Test.HUnit
 import qualified Data.Vector as V
 
 import Boltzmann.Species
-import Boltzmann.Species.System (Coefficients(..), Pointed(..), Wrapped(..), applySystem)
+import Boltzmann.Species.System (Coefficients(..), Pointed(..), Wrapped(..), applySystemGF)
 
 data T = L | N T T
   deriving Show
@@ -36,7 +36,7 @@ s = system $
 main = defaultMain
   [ testCase "num" $
       [1, 98, 8] @=?
-        V.toList (applySystem s 2 (V.fromList [3, 5, 7]))
+        V.toList (applySystemGF s 2 (V.fromList [3, 5, 7]))
   , testCase "coeffs" $
       [1, 1, 2] @=?
         let Wrapped (Coefficients cs) = lookupSys @"tree" s
