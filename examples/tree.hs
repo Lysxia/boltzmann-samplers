@@ -1,3 +1,6 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
+
 import Control.Applicative
 import Control.Monad
 import Data.Functor
@@ -13,29 +16,16 @@ size :: T -> Int
 size L = 1
 size (N l r) = 1 + size l + size r
 
-s :: Module f => System f T ()
-s = System dim sys
-  where
-    dim = 3
-    sys x self = (
-      let
-        [leaf, node, tree] = V.toList self
-      in
-        V.fromList
-          [ x $> L
-          , x *> (N <$> tree <*> tree)
-          , leaf <|> node
-          ], ())
+s :: System '[ '("leaf", T), '("node", T), '("tree", T)]
+s = system $
+  equation (pure L) /\
+  equation (
+    let tree = lookupSys @"tree" s
+    in pay (N <$> tree <*> tree)) /\
+  equation (
+    let leaf = lookupSys @"leaf" s
+        node = lookupSys @"node" s
+    in leaf <|> node) /\
+  emptySys
 
-g :: Gen T
-g = sizedGenerator s 2 0 (Just 10)
-
-totalSize :: Gen Int
-totalSize = fmap sum (replicateM 1000 (fmap size g))
-
-oracle = solveSized s 2 0 (Just 10)
-
-main = do
-  print oracle
-  sample g
-  sample totalSize
+main = undefined
