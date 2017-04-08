@@ -13,6 +13,7 @@ import Control.Monad.Trans
 import Data.Coerce
 import Data.Data
 import Data.Function
+import Numeric.Natural
 import Test.QuickCheck
 
 data SomeData m where
@@ -158,8 +159,8 @@ class Monad m => MonadRandomLike m where
   -- | @doubleR upperBound@: generates values in @[0, upperBound]@.
   doubleR :: Double -> m Double
 
-  -- | @integerR upperBound@: generates values in @[0, upperBound-1]@.
-  integerR :: Integer -> m Integer
+  -- | @naturalR upperBound@: generates values in @[0, upperBound-1]@.
+  naturalR :: Natural -> m Natural
 
   -- | Default @Int@ generator.
   int :: m Int
@@ -172,7 +173,7 @@ class Monad m => MonadRandomLike m where
 
 instance MonadRandomLike Gen where
   doubleR x = choose (0, x)
-  integerR x = choose (0, x-1)
+  naturalR x = fromInteger <$> choose (0, toInteger x-1)
   int = arbitrary
   double = arbitrary
   char = arbitrary
@@ -184,14 +185,14 @@ instance MonadRandomLike m => MonadRandomLike (RejectT m) where
     else
       cont (size + 1) ()
   doubleR = lift . doubleR
-  integerR = lift . integerR
+  naturalR = lift . naturalR
   int = lift int
   double = lift double
   char = lift char
 
 instance MonadRandom m => MonadRandomLike (AMonadRandom m) where
   doubleR x = lift $ getRandomR (0, x)
-  integerR x = lift $ getRandomR (0, x-1)
+  naturalR x = lift $ fromInteger <$> getRandomR (0, toInteger x-1)
   int = lift getRandom
   double = lift getRandom
   char = lift getRandom

@@ -2,6 +2,8 @@
 
 module Boltzmann.Data.Common where
 
+import Numeric.Natural
+
 frequencyWith
   :: (Ord r, Num r, Monad m) => (r -> m r) -> [(r, m a)] -> m a
 frequencyWith _ [(_, a)] = a
@@ -25,7 +27,7 @@ partitions k n = do
 -- | Binomial coefficient.
 --
 -- > binomial n k == factorial n `div` (factorial k * factorial (n-k))
-binomial :: Int -> Int -> Integer
+binomial :: Int -> Int -> Natural
 binomial = \n k -> pascal !! n !! k
   where
     pascal = [1] : fmap nextRow pascal
@@ -34,6 +36,6 @@ binomial = \n k -> pascal !! n !! k
 -- | Multinomial coefficient.
 --
 -- > multinomial n ps == factorial n `div` product [factorial p | p <- ps]
-multinomial :: Int -> [Int] -> Integer
+multinomial :: Int -> [Int] -> Natural
 multinomial _ [] = 1
 multinomial n (p : ps) = binomial n p * multinomial (n - p) ps

@@ -11,12 +11,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Boltzmann.Species
-  ( Species(..)
+  ( Sized(..)
   , System
   , system
+  , lookupSys
   , emptySys
   , (/\)
-  , Equation(..)
+  , Equation
 
   -- Types
   , PreSystem

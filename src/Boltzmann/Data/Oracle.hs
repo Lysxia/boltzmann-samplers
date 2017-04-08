@@ -25,6 +25,7 @@ import Data.Monoid
 import qualified Data.Vector as V
 import GHC.Generics ( Generic )
 import Numeric.AD
+import Numeric.Natural
 import Boltzmann.Data.Common
 import Boltzmann.Data.Types
 import Boltzmann.Solver
@@ -54,7 +55,7 @@ data DataDef m = DataDef
   , index :: HashMap TypeRep (Either Aliased Ix) -- ^ Map from types to indices
   , xedni :: HashMap Ix SomeData' -- ^ Inverse map from indices to types
   , xedni' :: HashMap Aliased (Ix, Alias m) -- ^ Inverse map to aliases
-  , types :: HashMap C [(Integer, Constr, [C'])]
+  , types :: HashMap C [(Natural, Constr, [C'])]
   -- ^ Structure of types and their pointings (up to 'points', initially 0)
   --
   -- Primitive types and empty types are mapped to an empty constructor list, and
@@ -62,7 +63,7 @@ data DataDef m = DataDef
   -- associated to it by 'xedni'.
   --
   -- The integer is a multiplicity which can be > 1 for pointings.
-  , lTerm :: HashMap Ix (Nat, Integer)
+  , lTerm :: HashMap Ix (Nat, Natural)
   -- ^ Leading term @a * x ^ u@ of the generating functions @C_i[k](x)@ in the
   -- form (u, a).
   --
@@ -139,7 +140,7 @@ primOrder = 1
 primOrder' :: Nat
 primOrder' = Succ Zero
 
-primlCoef :: Integer
+primlCoef :: Natural
 primlCoef = 1
 
 -- | The type of the first argument of 'Data.Data.gunfold'.
@@ -149,12 +150,12 @@ type GUnfold m = forall b r. Data b => m (b -> r) -> m r
 type AMap m = HashMap Aliased (Ix, Alias m)
 
 collectTypesM :: Data a => proxy a
-  -> State (DataDef m) (Either Aliased Ix, ((Nat, Integer), Maybe Int))
+  -> State (DataDef m) (Either Aliased Ix, ((Nat, Natural), Maybe Int))
 collectTypesM a = chaseType a (const id)
 
 chaseType :: Data a => proxy a
   -> ((Maybe (Alias m), Ix) -> AMap m -> AMap m)
-  -> State (DataDef m) (Either Aliased Ix, ((Nat, Integer), Maybe Int))
+  -> State (DataDef m) (Either Aliased Ix, ((Nat, Natural), Maybe Int))
 chaseType a k = do
   let t = typeRep a
   dd@DataDef{..} <- get
@@ -196,7 +197,7 @@ chaseType a k = do
 -- | Traversal of the definition of a datatype.
 traverseType
   :: Data a => proxy a -> Ix
-  -> State (DataDef m) (Either Aliased Ix, ((Nat, Integer), Maybe Int))
+  -> State (DataDef m) (Either Aliased Ix, ((Nat, Natural), Maybe Int))
 traverseType a i = do
   let d = withProxy dataTypeOf a
   mfix $ \ ~(_, (lTerm_i0, _)) -> do
@@ -213,13 +214,13 @@ traverseType a i = do
 traverseType'
   :: Data a => proxy a -> DataType
   -> State (DataDef m)
-      ([(Integer, Constr, [(Maybe Aliased, C)])], ((Nat, Integer), Maybe Int))
+      ([(Natural, Constr, [(Maybe Aliased, C)])], ((Nat, Natural), Maybe Int))
 traverseType' a d | isAlgType d = do
   let
     constrs = dataTypeConstrs d
     collect
       :: GUnfold (StateT
-        ([Either Aliased Ix], (Nat, Integer), Maybe Int)
+        ([Either Aliased Ix], (Nat, Natural), Maybe Int)
         (State (DataDef m)))
     collect mkCon = do
       f <- mkCon
@@ -251,7 +252,7 @@ traverseType' _ _ =
 -- similarly for @(u', a')@, this finds the leading term of their sum.
 --
 -- The comparison of 'Nat' is unrolled here for maximum laziness.
-lPlus :: (Nat, Integer) -> (Nat, Integer) -> (Nat, Integer)
+lPlus :: (Nat, Natural) -> (Nat, Natural) -> (Nat, Natural)
 lPlus (Zero, lCoef) (Zero, lCoef') = (Zero, lCoef + lCoef')
 lPlus (Zero, lCoef) _ = (Zero, lCoef)
 lPlus _ (Zero, lCoef') = (Zero, lCoef')
@@ -259,15 +260,15 @@ lPlus (Succ order, lCoef) (Succ order', lCoef') =
   first Succ $ lPlus (order, lCoef) (order', lCoef')
 
 -- | Sum of a list of series.
-lSum :: [(Nat, Integer)] -> (Nat, Integer)
+lSum :: [(Nat, Natural)] -> (Nat, Natural)
 lSum [] = (infinity, 0)
 lSum ls = foldl1 lPlus ls
 
 -- | Leading term of a product of series.
-lMul :: (Nat, Integer) -> (Nat, Integer) -> (Nat, Integer)
+lMul :: (Nat, Natural) -> (Nat, Natural) -> (Nat, Natural)
 lMul (order, lCoef) (order', lCoef') = (order <> order', lCoef * lCoef')
 
-lProd :: [(Nat, Integer)] -> (Nat, Integer)
+lProd :: [(Nat, Natural)] -> (Nat, Natural)
 lProd = foldl lMul (Zero, 1)
 
 maxDegree :: [Maybe Int] -> Maybe Int
@@ -385,19 +386,19 @@ makeOracle dd0 t size' =
 --
 -- Primitive datatypes have @C(x) = x@: they are considered as
 -- having a single object ('lCoef') of size 1 ('order')).
-phi :: Num a => DataDef m -> C -> [(Integer, constr, [C'])]
+phi :: Num a => DataDef m -> C -> [(Natural, constr, [C'])]
   -> a -> V.Vector a -> a
 phi DataDef{..} (C i _) [] =
   case xedni #! i of
     SomeData a ->
       case (dataTypeRep . withProxy dataTypeOf) a of
         AlgRep _ -> \_ _ -> 0
-        _ -> \x _ -> fromInteger primlCoef * x ^ primOrder
+        _ -> \x _ -> fromIntegral primlCoef * x ^ primOrder
 phi dd@DataDef{..} _ tyInfo = f
   where
     f x y = x * (sum . fmap (toProd y)) tyInfo
     toProd y (w, _, js) =
-      fromInteger w * product [ y V.! (dd ? j) | (_, j) <- js ]
+      fromIntegral w * product [ y V.! (dd ? j) | (_, j) <- js ]
 
 -- | Maps a key representing a type @a@ (or one of its pointings) to a
 -- generator @m a@.
@@ -416,9 +417,9 @@ makeGenerators DataDef{..} oracle =
         case tyInfo of
           [] -> defGen
           _ -> frequencyWith doubleR (fmap g tyInfo) `proxyType` a
-    g :: Data a => (Integer, Constr, [C']) -> (Double, m a)
+    g :: Data a => (Natural, Constr, [C']) -> (Double, m a)
     g (v, constr, js) =
-      ( fromInteger v * w
+      ( fromIntegral v * w
       , gunfold generate return constr `runReaderT` gs)
       where
         gs = fmap (\(j', i) -> m j' i) js
@@ -443,8 +444,8 @@ smallGenerators DataDef{..} = (generatorsL, generatorsR)
         [] -> defGen
         tyInfo ->
           let gs = (tyInfo >>= g (fst (lTerm #! i))) in
-          frequencyWith integerR gs `proxyType` a
-    g :: Data a => Nat -> (Integer, Constr, [C']) -> [(Integer, m a)]
+          frequencyWith naturalR gs `proxyType` a
+    g :: Data a => Nat -> (Natural, Constr, [C']) -> [(Natural, m a)]
     g minSize (_, constr, js) =
       guard (minSize == Succ size) *>
       [(weight, gunfold generate return constr `runReaderT` gs)]
