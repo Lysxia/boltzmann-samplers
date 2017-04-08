@@ -90,7 +90,7 @@ class Sized e => Equation e where
   type Injection e (d :: [(k, *)]) :: Constraint
 
   rhs_
-    :: (Injection e d, KnownNat (Index a d), b ~ Lookup a d)
+    :: (Injection e d, Assoc a d b)
     => proxy a -> proxy' d
     -> F e a b -> e b
   equation_
@@ -130,28 +130,55 @@ instance Equation e => Equation (Inject e) where
     Inject (rhs_ a d (lookupSystem_ @a @d ?injection))
   equation_ a d (Inject e) = equation_ a d e
 
-newtype GFunction x a = GFunction (x -> x)
+newtype GFunction x a = GFunction ((?gfx :: x) => x)
 
 instance Num x => Equation (GFunction x) where
   type F (GFunction x) a b = x
   type Injection (GFunction x) d = (?gfx :: x)
 
-  rhs_ _ _ = GFunction . const
-  equation_ _ _ (GFunction f) = f ?gfx
+  rhs_ _ _ = GFunction
+  equation_ _ _ (GFunction f) = f
 
 instance Functor (GFunction x) where
-  fmap f (GFunction x) = GFunction x
+  fmap _ (GFunction x) = GFunction x
 
 instance Num x => Applicative (GFunction x) where
-  pure _ = GFunction (const 1)
-  GFunction x1 <*> GFunction x2 = GFunction (liftA2 (*) x1 x2)
+  pure _ = GFunction 1
+  GFunction xf <*> GFunction xa = GFunction (xf * xa)
 
 instance Num x => Alternative (GFunction x) where
-  empty = GFunction (const 0)
-  GFunction x1 <|> GFunction x2 = GFunction (liftA2 (+) x1 x2)
+  empty = GFunction 0
+  GFunction x1 <|> GFunction x2 = GFunction $ x1 + x2
 
 instance Num x => Sized (GFunction x) where
-  pay (GFunction f) = GFunction (\x -> x * f x)
+  pay (GFunction x) = GFunction (?gfx * x)
+
+data WFunctor x f a = WFunctor !((?gfx :: x) => x) ((?gfx :: x) => f a)
+
+instance (Num x, WAlternative x f) => Equation (WFunctor x f) where
+  type F (WFunctor x f) a b = (x, f b)
+  type Injection (WFunctor x f) d = (?gfx :: x)
+
+  rhs_ _ _ (x, f) = WFunctor x f
+  equation_ _ _ (WFunctor x f) = (x, f)
+
+instance Functor m => Functor (WFunctor x m) where
+  fmap f (WFunctor x m) = WFunctor x (fmap f m)
+
+instance (Num x, Applicative m) => Applicative (WFunctor x m) where
+  pure a = WFunctor 1 (pure a)
+  WFunctor xf f <*> WFunctor xa a = WFunctor (xf * xa) (f <*> a)
+
+instance (Num x, WAlternative x m) => Alternative (WFunctor x m) where
+  empty = WFunctor 0 (wempty @x)
+  WFunctor x1 a1 <|> WFunctor x2 a2 = WFunctor (x1 + x2) (wplus (x1, a1) (x2, a2))
+
+instance (Num x, WAlternative x m) => Sized (WFunctor x m) where
+  pay (WFunctor x a) = WFunctor (?gfx * x) a
+
+class Applicative m => WAlternative x m where
+  wempty :: m a
+  wplus :: (x, m a) -> (x, m a) -> m a
 
 class (x ~ F e a b) => EqualsF (e :: * -> *) x a b
 instance (x ~ F e a b) => EqualsF e x a b
