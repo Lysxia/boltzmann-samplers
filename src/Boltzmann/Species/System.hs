@@ -35,6 +35,13 @@ type family Lookup a (d :: [(k, *)]) where
   Lookup a ('(a, b) ': _) = b
   Lookup a (_ ': d) = Lookup a d
 
+lookupSystem
+  :: forall a d e n
+  .  (n ~ Index a d, KnownNat n)
+  => System_ e d
+  -> e a (Lookup a d)
+lookupSystem (System_ v) = unsafeCoerce (v V.! fromInteger (natVal @n Proxy))
+
 system :: PreSystem e d -> System_ e d
 system (PreSystem a) = System_ (V.fromList a)
 
@@ -71,9 +78,7 @@ class Species (F e) => Equation (e :: k -> * -> *) where
     => proxy a
     -> System_ e d
     -> F e (Lookup a d)
-  lookupSys _ (System_ v) =
-    (rhs :: e a (Lookup a d) -> F e (Lookup a d))
-      (unsafeCoerce (v V.! fromInteger (natVal @n Proxy)))
+  lookupSys _ = rhs . lookupSystem @a
 
   rhs :: e a b -> F e b
   equation :: Injection e d => F e b -> e a b
