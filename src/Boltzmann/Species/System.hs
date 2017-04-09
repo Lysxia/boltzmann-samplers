@@ -221,7 +221,6 @@ applySystemPGF
   -> x -> Vector [x] -> Vector [x]
 applySystemPGF f x = let ?gfx = x in applySystem @(PGF x) @d f
 
--- | Truncates
 newtype Pointed f a = Pointed [f a]
 
 takePointed :: Int -> Pointed f a -> [f a]
@@ -329,16 +328,11 @@ solveSized
   -> (Double, Vector [Double])
 solveSized sys k size' =
   fmap (shape n (k + 2) . fromJust) .
-  search solve $
+  search (solveAt @d sys k) $
   checkSize size'
   where
     n = fromInteger (natVal (Proxy @(Length d)))
     i = fromInteger (natVal (Proxy @(Index a d)))
-
-    x0 = V.replicate (n * (k + 2)) 0
-    phi :: (AD.Mode x, AD.Scalar x ~ Double) => Double -> Vector x -> Vector x
-    phi x = unshape . applySystemPGF @d sys (AD.auto x) . shape n (k + 2)
-    solve x = fixedPoint defSolveArgs (phi x) x0
 
     j = i * (k + 2) + k
     j' = i * (k + 2) + k + 1
@@ -348,8 +342,22 @@ solveSized sys k size' =
     checkSize Nothing (Just _) = True
     checkSize _ Nothing = False
 
+solveAt
+  :: forall d
+  .  KnownNat (Length d)
+  => System d
+  -> Int
+  -> Double
+  -> Maybe (Vector Double)
+solveAt sys k x = fixedPoint defSolveArgs (phi x) x0
+  where
+    n = fromInteger (natVal (Proxy @(Length d)))
+    x0 = V.replicate (n * (k + 2)) 0
+    phi :: (AD.Mode x, AD.Scalar x ~ Double) => Double -> Vector x -> Vector x
+    phi x = unshape (k + 2) . applySystemPGF @d sys (AD.auto x) . shape n (k + 2)
+
 shape :: Int -> Int -> Vector x -> Vector [x]
 shape n k v = V.generate n $ \i -> V.toList (V.slice (i * k) k v)
 
-unshape :: Vector [x] -> Vector x
-unshape = (>>= V.fromList)
+unshape :: Int -> Vector [x] -> Vector x
+unshape k = (V.fromList . take k =<<)
