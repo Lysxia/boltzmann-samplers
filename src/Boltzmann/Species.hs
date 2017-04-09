@@ -27,5 +27,3 @@ module Boltzmann.Species
 
 import Boltzmann.Species.System
 
-type System d = forall e. (Equation e, Injection e d) => System_ e d
-

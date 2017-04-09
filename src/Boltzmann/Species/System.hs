@@ -22,6 +22,7 @@ import Control.Applicative
 import Data.Constraint.Forall
 import Data.Foldable (asum)
 import Data.List (inits)
+import Data.Maybe (fromJust)
 import Data.Proxy
 import Data.Vector (Vector)
 import GHC.Exts (Constraint)
@@ -29,9 +30,11 @@ import GHC.Prim (Any)
 import GHC.TypeLits
 import Numeric.Natural
 import Unsafe.Coerce
+import qualified Numeric.AD as AD
 import qualified Data.Vector as V
 
 import Boltzmann.Data.Common (binomial)
+import Boltzmann.Solver
 
 newtype System_ (e :: * -> *) (d :: [(k, *)]) = System_ (Vector Any)
 
@@ -174,11 +177,12 @@ instance (Num x, WAlternative x m) => Alternative (WFunctor x m) where
   WFunctor x1 a1 <|> WFunctor x2 a2 = WFunctor (x1 + x2) (wplus (x1, a1) (x2, a2))
 
 instance (Num x, WAlternative x m) => Sized (WFunctor x m) where
-  pay (WFunctor x a) = WFunctor (?gfx * x) a
+  pay (WFunctor x a) = WFunctor (?gfx * x) (wincr @x a)
 
 class Applicative m => WAlternative x m where
   wempty :: m a
   wplus :: (x, m a) -> (x, m a) -> m a
+  wincr :: m a -> m a
 
 class (x ~ F e a b) => EqualsF (e :: * -> *) x a b
 instance (x ~ F e a b) => EqualsF e x a b
@@ -286,3 +290,65 @@ instance Sized f => Equation (Wrapped f) where
 
   rhs_ _ _ = id
   equation_ _ _ = id
+
+type System d = forall e. (Equation e, Injection e d) => System_ e d
+
+type family Length d where
+  Length '[] = 0
+  Length (_ ': d) = 1 + Length d
+
+sizedGenerator
+  :: forall a d m b n
+  .  (KnownNat (Length d), Assoc a d b, WAlternative Double m)
+  => System d
+  -> Int
+  -> Maybe Double
+  -> m b
+sizedGenerator sys k size' = snd (gs !! k)
+  where
+    zipOracle =
+      V.zipWith (coerceInj . zipWith (\x (_, m) -> (x, m))) oracle
+      where
+        coerceInj :: ([(Double, m Any)] -> [(Double, m Any)]) -> Any -> Any
+        coerceInj = unsafeCoerce
+    gs = lookupSystem_ @a sys_
+    sys_ :: System_ (Inject (Pointed (WFunctor Double m))) d
+    sys_@(System_ v_) =
+      let ?gfx = x
+          ?injection = System_ (zipOracle v_)
+      in sys
+    (x, oracle) = solveSized @a @d sys k size'
+
+solveSized
+  :: forall a d b n
+  .  (KnownNat (Length d), Assoc a d b)
+  => System d
+  -> Int
+  -> Maybe Double
+  -> (Double, Vector [Double])
+solveSized sys k size' =
+  fmap (shape n (k + 2) . fromJust) .
+  search solve $
+  checkSize size'
+  where
+    n = fromInteger (natVal (Proxy @(Length d)))
+    i = fromInteger (natVal (Proxy @(Index a d)))
+
+    x0 = V.replicate (n * (k + 2)) 0
+    phi :: (AD.Mode x, AD.Scalar x ~ Double) => Double -> Vector x -> Vector x
+    phi x = unshape . applySystemPGF @d sys (AD.auto x) . shape n (k + 2)
+    solve x = fixedPoint defSolveArgs (phi x) x0
+
+    j = i * (k + 2) + k
+    j' = i * (k + 2) + k + 1
+
+    checkSize _ (Just ys) | V.any (< 0) ys = False
+    checkSize (Just size) (Just ys) = size >= ys V.! j' / ys V.! j
+    checkSize Nothing (Just _) = True
+    checkSize _ Nothing = False
+
+shape :: Int -> Int -> Vector x -> Vector [x]
+shape n k v = V.generate n $ \i -> V.toList (V.slice (i * k) k v)
+
+unshape :: Vector [x] -> Vector x
+unshape = (>>= V.fromList)
