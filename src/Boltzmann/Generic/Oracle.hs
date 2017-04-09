@@ -13,7 +13,7 @@
 
 module Boltzmann.Generic.Oracle where
 
-import Data.TypeMap
+import Data.TypeMap.Dynamic
 
 import Boltzmann.Generic.Sampler
 
