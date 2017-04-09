@@ -24,6 +24,7 @@ import Data.Foldable (asum)
 import Data.List (inits)
 import Data.Maybe (fromJust)
 import Data.Proxy
+import Data.Type.Equality
 import Data.Vector (Vector)
 import GHC.Exts (Constraint)
 import GHC.Prim (Any)
@@ -33,29 +34,42 @@ import Unsafe.Coerce
 import qualified Numeric.AD as AD
 import qualified Data.Vector as V
 
+import Data.TypeMap.Static
+import Data.TypeMap.List (TypeList)
+import Data.TypeMap.Vector (TypeVector)
+import qualified Data.TypeMap.List as TL
+import qualified Data.TypeMap.Vector as TV
+
 import Boltzmann.Data.Common (binomial)
 import Boltzmann.Options
 import Boltzmann.Solver
 
-newtype System_ (e :: * -> *) (d :: [(k, *)]) = System_ (Vector Any)
+newtype System_ (e :: * -> *) (d :: [(k, *)]) = System_ (TypeVector (MapF e d))
 
-type family Index a d where
-  Index a ('(a, _) ': _) = 0
-  Index a (_ ': d) = 1 + Index a d
+type family MapF e d where
+  MapF e '[] = '[]
+  MapF e ('(a, b) ': d) = '(a, F e a b) ': MapF e d
 
-type family Lookup a (d :: [(k, *)]) where
-  Lookup a ('(a, b) ': _) = b
-  Lookup a (_ ': d) = Lookup a d
+coerceMapLookup :: forall a e d. Lookup a (MapF e d) -> F e a (Lookup a d)
+coerceMapLookup = unsafeCoerce
+
+newtype With x y r = With (x ~ y => r)
+
+admitEqualIndices :: forall a e d r. (Index a d ~ Index a (MapF e d) => r) -> r
+admitEqualIndices r =
+  case unsafeCoerce (Refl :: 0 :~: 0) :: Index a d :~: Index a (MapF e d) of
+    Refl -> r
 
 lookupSystem_
   :: forall a d e n
   .  (n ~ Index a d, KnownNat n)
   => System_ e d
   -> F e a (Lookup a d)
-lookupSystem_ (System_ v) = unsafeCoerce (v V.! fromInteger (natVal @n Proxy))
+lookupSystem_ (System_ v) = admitEqualIndices @a @e @d $
+  coerceMapLookup @a @e @d (TV.index @a v)
 
 system :: PreSystem e d d -> System_ e d
-system (PreSystem a) = System_ (V.fromList a)
+system (PreSystem a) = System_ (TL.toVector a)
 
 -- |
 --
@@ -63,19 +77,16 @@ system (PreSystem a) = System_ (V.fromList a)
 -- PreSystem e \'['(a1, b1), '(a2, b2), '(a3, b3)]
 --   = [F e b1, F e b2, F e b3]
 -- @
-newtype PreSystem e d d0 = PreSystem [Any]
+newtype PreSystem e d d0 = PreSystem (TypeList (MapF e d))
 
 emptySys :: PreSystem e '[] d0
-emptySys = PreSystem []
+emptySys = PreSystem TL.empty
 
 (/\)
   :: forall e (d0 :: [(k, *)]) (a :: k) b (d :: [(k, *)])
   .  (Equation e, Injection e d0)
   => e b -> PreSystem e d d0 -> PreSystem e ('(a, b) ': d) d0
-(/\) eq (PreSystem sys) = PreSystem (coerceEquation (equation @a @d0 eq) : sys)
-  where
-    coerceEquation :: F e a b -> Any
-    coerceEquation = unsafeCoerce
+(/\) eq (PreSystem sys) = PreSystem (equation @a @d0 eq `TL.cons` sys)
 
 infixr 3 /\
 
@@ -306,17 +317,19 @@ sizedGenerator
   -> m b
 sizedGenerator sys opts = snd (gs !! points opts)
   where
-    zipOracle =
-      V.zipWith (coerceInj . zipWith (\x (_, m) -> (x, m))) oracle
-      where
-        coerceInj :: ([(Double, m Any)] -> [(Double, m Any)]) -> Any -> Any
-        coerceInj = unsafeCoerce
+    zipOracle = V.zipWith (zipWith (\x (_, m) -> (x, m))) oracle
     gs = lookupSystem_ @a sys_
     sys_ :: System_ (Inject (Pointed (WFunctor Double m))) d
-    sys_@(System_ v_) =
+    sys_ =
       let ?gfx = x
-          ?injection = System_ (zipOracle v_)
+          ?injection = coerceEndo zipOracle sys_
       in sys
+      where
+        coerceEndo
+          :: (Vector [(Double, m Any)] -> Vector [(Double, m Any)])
+          -> System_ (Inject (Pointed (WFunctor Double m))) d
+          -> System_ (Pointed (WFunctor Double m)) d
+        coerceEndo = unsafeCoerce
     (x, oracle) = solveSized @a @d sys opts
 
 solveSized
