@@ -183,6 +183,7 @@ class Applicative m => WAlternative x m where
   wempty :: m a
   wplus :: (x, m a) -> (x, m a) -> m a
   wincr :: m a -> m a
+  wincr = id
 
 class (x ~ F e a b) => EqualsF (e :: * -> *) x a b
 instance (x ~ F e a b) => EqualsF e x a b

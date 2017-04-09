@@ -12,26 +12,7 @@ import qualified Data.Vector as V
 
 import Boltzmann.Species
 import Boltzmann.Species.System (Coefficients(..), Pointed(..), Wrapped(..), applySystemGF)
-
-data T = L | N T T
-  deriving Show
-
-size :: T -> Int
-size L = 1
-size (N l r) = 1 + size l + size r
-
-s :: System '[ '("leaf", T), '("node", T), '("tree", T)]
-s = system $
-  ( pure L
-  ) /\
-  ( let tree = lookupSys @"tree" s
-    in pay (N <$> tree <*> tree)
-  ) /\
-  ( let leaf = lookupSys @"leaf" s
-        node = lookupSys @"node" s
-    in leaf <|> node
-  ) /\
-  emptySys
+import Test.Tree
 
 main = defaultMain
   [ testCase "num" $

@@ -19,11 +19,17 @@ module Boltzmann.Species
   , (/\)
   , Equation
 
+  --
+  , Alternative(..)
+  , WAlternative(..)
+
   -- Types
   , PreSystem
   , System_
   , F
   ) where
+
+import Control.Applicative
 
 import Boltzmann.Species.System
 

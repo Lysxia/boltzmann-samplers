@@ -62,11 +62,28 @@ source-repository head
   type:     git
   location: https://github.com/Lysxia/boltzmann-samplers
 
+test-suite test-species
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          species.hs
+  default-language: Haskell2010
+  other-modules:
+    Test.Tree
+  build-depends:
+    base,
+    MonadRandom,
+    QuickCheck,
+    transformers,
+    boltzmann-samplers
+  ghc-options: -rtsopts -with-rtsopts -M100M
+
 test-suite test-system
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          system.hs
   default-language: Haskell2010
+  other-modules:
+    Test.Tree
   build-depends:
     base,
     HUnit,
