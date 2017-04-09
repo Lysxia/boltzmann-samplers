@@ -9,7 +9,7 @@ data T = L | N T T
   deriving Show
 
 size :: T -> Int
-size L = 1
+size L = 0
 size (N l r) = 1 + size l + size r
 
 type D = '[ '("leaf", T), '("node", T), '("tree", T)]

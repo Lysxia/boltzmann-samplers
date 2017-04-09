@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -10,8 +11,12 @@ import Boltzmann.Species
 import Boltzmann.Species.System
 import Test.Tree
 
+tgtSize = 10
+iters = 10000
+-- cumulatedSize approx. 100000
+
 generator :: IO T
-generator = sizedGenerator @"tree" @D s 0 (Just 10)
+generator = sizedGenerator @"tree" @D s 0 (Just tgtSize)
 
 instance WAlternative Double IO where
   wempty = fail "wempty"
@@ -20,10 +25,10 @@ instance WAlternative Double IO where
     if p < x then a else b
 
 main :: IO ()
-main = go 0 1000
+main = go 0 iters
   where
-    go x 0 = print x
+    go !x 0 = print x
     go x n = do
       t <- generator
       let x' = size t + x
-      x' `seq` go x' (n - 1)
+      go x' (n - 1)

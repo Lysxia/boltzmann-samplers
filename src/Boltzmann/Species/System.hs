@@ -163,7 +163,7 @@ instance (Num x, WAlternative x f) => Equation (WFunctor x f) where
   type Injection (WFunctor x f) d = (?gfx :: x)
 
   rhs_ _ _ (x, f) = WFunctor x f
-  equation_ _ _ (WFunctor x f) = (x, f)
+  equation_ _ _ ~(WFunctor x f) = (x, f)
 
 instance Functor m => Functor (WFunctor x m) where
   fmap f (WFunctor x m) = WFunctor x (fmap f m)
@@ -337,7 +337,7 @@ solveSized sys k size' =
     j = i * (k + 2) + k
     j' = i * (k + 2) + k + 1
 
-    checkSize _ (Just ys) | V.any (< 0) ys = False
+    checkSize _ (Just ys) | V.any (\x -> x < (- (sum . fmap abs) ys / 10 ** 6)) ys = False
     checkSize (Just size) (Just ys) = size >= ys V.! j' / ys V.! j
     checkSize Nothing (Just _) = True
     checkSize _ Nothing = False

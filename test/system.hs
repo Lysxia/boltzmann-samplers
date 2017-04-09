@@ -48,4 +48,11 @@ main = defaultMain
             return ()
           else
             print (x, y) >> assertFailure "Not a fixpoint"
+  , testCase "solveSized" $ do
+      let (x, v) = solveSized @"tree" @D s 0 (Just 10)
+          [z, z'] = v V.! 2
+      if abs (10 - z' / z) < 10 ** (-4) then
+        return ()
+      else
+        print (x, v) >> assertFailure "Wrong size"
   ]
