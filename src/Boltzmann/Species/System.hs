@@ -34,6 +34,7 @@ import qualified Numeric.AD as AD
 import qualified Data.Vector as V
 
 import Boltzmann.Data.Common (binomial)
+import Boltzmann.Options
 import Boltzmann.Solver
 
 newtype System_ (e :: * -> *) (d :: [(k, *)]) = System_ (Vector Any)
@@ -301,10 +302,9 @@ sizedGenerator
   :: forall a d m b n
   .  (KnownNat (Length d), Assoc a d b, WAlternative Double m)
   => System d
-  -> Int
-  -> Maybe Double
+  -> Options
   -> m b
-sizedGenerator sys k size' = snd (gs !! k)
+sizedGenerator sys opts = snd (gs !! points opts)
   where
     zipOracle =
       V.zipWith (coerceInj . zipWith (\x (_, m) -> (x, m))) oracle
@@ -317,20 +317,20 @@ sizedGenerator sys k size' = snd (gs !! k)
       let ?gfx = x
           ?injection = System_ (zipOracle v_)
       in sys
-    (x, oracle) = solveSized @a @d sys k size'
+    (x, oracle) = solveSized @a @d sys opts
 
 solveSized
   :: forall a d b n
   .  (KnownNat (Length d), Assoc a d b)
   => System d
-  -> Int
-  -> Maybe Double
+  -> Options
   -> (Double, Vector [Double])
-solveSized sys k size' =
+solveSized sys opts =
   fmap (shape n (k + 2) . fromJust) .
   search (solveAt @d sys k) $
-  checkSize size'
+  checkSize (averageSize opts)
   where
+    k = points opts
     n = fromInteger (natVal (Proxy @(Length d)))
     i = fromInteger (natVal (Proxy @(Index a d)))
 

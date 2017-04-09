@@ -1,35 +1,25 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Boltzmann.Species
-  ( Sized(..)
-  , System
+  (
+  -- * Combinatorial systems
+    System
   , system
-  , lookupSys
-  , emptySys
   , (/\)
+  , emptySys
   , Equation
-
-  --
+  , lookupSys
   , Alternative(..)
+  , Sized(..)
+
+  -- * Random generators
   , WAlternative(..)
 
-  -- Types
-  , PreSystem
-  , System_
-  , F
+  -- * Options
+  , Options(..)
+  , sizedOptions
+  , singularOptions
   ) where
 
 import Control.Applicative
 
 import Boltzmann.Species.System
-
+import Boltzmann.Options
