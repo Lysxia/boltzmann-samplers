@@ -9,6 +9,7 @@ module Boltzmann.Solver where
 
 import Control.Applicative
 import Data.AEq ( (~==) )
+import Data.Ord
 import Numeric.AD.Mode
 import Numeric.AD.Mode.Forward
 import Numeric.LinearAlgebra
@@ -23,31 +24,40 @@ data SolveArgs = SolveArgs
 defSolveArgs :: SolveArgs
 defSolveArgs = SolveArgs 1e-8 20
 
+newton
+  :: (Element x, Ord x, Fractional x, Field x, Num (Vector x))
+  => (forall s. V.Vector (AD s (Forward x)) -> V.Vector (AD s (Forward x)))
+  -> Vector x
+  -> [(V.Vector x, V.Vector x)]
+newton f x_
+  | V.maximumBy (comparing abs) y == 1/0 = []
+  | all (== 0) y = [(x, y)]
+  | otherwise = (x, y) : newton f x'
+  where
+    x' = x_ - j_ <\> y_
+    j_ = (fromRows . V.toList . fmap V.convert) j
+    y_ = V.convert y
+    (y, j) = V.unzip (jacobian' f x)
+    x = S.convert x_
+
 findZero
   :: SolveArgs
   -> (forall s. V.Vector (AD s (Forward R)) -> V.Vector (AD s (Forward R)))
-  -> Vector R
-  -> Maybe (Vector R)
-findZero SolveArgs{..} f = newton numIterations
+  -> V.Vector R
+  -> Maybe (V.Vector R)
+findZero SolveArgs{..} f x0 =
+  headM . dropWhile (\(_, y) -> maximum y > accuracy) $ take numIterations iters
   where
-    newton 0 _ = Nothing
-    newton n x
-      | norm_y == 1/0 = Nothing
-      | norm_y > accuracy = newton (n - 1) (x - jacobian <\> y)
-      | otherwise = Just x
-      where
-        norm_y = norm_Inf y
-        jacobian = (fromRows . V.toList . fmap (V.convert . snd)) yj
-        y = (V.convert . fmap fst) yj
-        yj = jacobian' f (S.convert x)
+    iters = newton f (V.convert x0)
+    headM [] = Nothing
+    headM ((x, _) : _) = Just x
 
 fixedPoint
   :: SolveArgs
   -> (forall a. (Mode a, Scalar a ~ R) => V.Vector a -> V.Vector a)
   -> V.Vector R
   -> Maybe (V.Vector R)
-fixedPoint args f =
-  fmap S.convert . findZero args (liftA2 (V.zipWith (-)) f id) . S.convert
+fixedPoint args f = findZero args (liftA2 (V.zipWith (-)) f id)
 
 -- | Assuming @p . f@ is satisfied only for positive values in some interval
 -- @(0, r]@, find @f r@.
