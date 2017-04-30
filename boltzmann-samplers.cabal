@@ -40,6 +40,7 @@ library
     Boltzmann.Options
     Boltzmann.Solver
     Boltzmann.Species
+    Boltzmann.Species.Generic
     Boltzmann.Species.System
   build-depends:
     ad,
@@ -50,6 +51,7 @@ library
     hashable,
     hmatrix,
     ieee754,
+    one-liner,
     unordered-containers,
     MonadRandom,
     mtl,
