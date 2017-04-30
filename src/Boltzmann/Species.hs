@@ -4,11 +4,11 @@ module Boltzmann.Species
     System
   , system
   , (/\)
-  , emptySys
-  , Equation
-  , lookupSys
+  , none
+  , species
+  , Species
+  , Pay
   , Alternative(..)
-  , Sized(..)
 
   -- * Random generators
   , WAlternative(..)

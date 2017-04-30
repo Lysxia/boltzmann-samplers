@@ -19,6 +19,7 @@
 module Boltzmann.Species.System where
 
 import Control.Applicative
+import Data.Coerce
 import Data.Constraint.Forall
 import Data.Foldable (asum)
 import Data.List (inits)
@@ -44,115 +45,67 @@ import Boltzmann.Data.Common (binomial)
 import Boltzmann.Options
 import Boltzmann.Solver
 
-newtype System_ (e :: * -> *) (d :: [(k, *)]) = System_ (TypeVector (MapF e d))
+newtype Species (f :: * -> *) (d :: [(k, *)]) = Species (TypeVector (MapSnd f d))
 
-type family MapF e d where
-  MapF e '[] = '[]
-  MapF e ('(a, b) ': d) = '(a, F e a b) ': MapF e d
+type family MapSnd f d where
+  MapSnd f '[] = '[]
+  MapSnd f ('(a, b) ': d) = '(a, f b) ': MapSnd f d
 
-coerceMapLookup :: forall a e d. Lookup a (MapF e d) -> F e a (Lookup a d)
+coerceMapLookup :: forall a f d. Lookup a (MapSnd f d) -> f (Lookup a d)
 coerceMapLookup = unsafeCoerce
 
-newtype With x y r = With (x ~ y => r)
-
-admitEqualIndices :: forall a e d r. (Index a d ~ Index a (MapF e d) => r) -> r
+admitEqualIndices :: forall a f d r. (Index a d ~ Index a (MapSnd f d) => r) -> r
 admitEqualIndices r =
-  case unsafeCoerce (Refl :: 0 :~: 0) :: Index a d :~: Index a (MapF e d) of
+  case unsafeCoerce (Refl :: 0 :~: 0) :: Index a d :~: Index a (MapSnd f d) of
     Refl -> r
 
-lookupSystem_
-  :: forall a d e n
-  .  (n ~ Index a d, KnownNat n)
-  => System_ e d
-  -> F e a (Lookup a d)
-lookupSystem_ (System_ v) = admitEqualIndices @a @e @d $
-  coerceMapLookup @a @e @d (TV.index @a v)
+type Indexable a d = KnownNat (Index a d)
 
-system :: PreSystem e d d -> System_ e d
-system (PreSystem a) = System_ (TL.toVector a)
+species
+  :: forall a d f
+  .  Indexable a d
+  => Species f d
+  -> f (Lookup a d)
+species (Species v) = admitEqualIndices @a @f @d $
+  coerceMapLookup @a @f @d (TV.index @a v)
+
+type Pay f = forall b. f b -> f b
+
+newtype System_ f d = System_
+  { runSystem_ :: Pay f -> Species f d -> Species f d
+  }
+
+system :: (Pay f -> Species f d -> Species' f d d) -> System_ f d
+system sys = System_ (\x -> toSpecies . sys x)
+
+toSpecies :: Species' f d d -> Species f d
+toSpecies (Species' l) = Species (TL.toVector l)
 
 -- |
 --
 -- @
--- PreSystem e \'['(a1, b1), '(a2, b2), '(a3, b3)]
---   = [F e b1, F e b2, F e b3]
+-- Species' f \'['(a1, b1), '(a2, b2), '(a3, b3)]
+--   = [F f b1, F f b2, F f b3]
 -- @
-newtype PreSystem e d d0 = PreSystem (TypeList (MapF e d))
+newtype Species' f d d0 = Species' (TypeList (MapSnd f d))
 
-emptySys :: PreSystem e '[] d0
-emptySys = PreSystem TL.empty
+none :: Species' f '[] d0
+none = Species' TL.empty
 
 (/\)
-  :: forall e (d0 :: [(k, *)]) (a :: k) b (d :: [(k, *)])
-  .  (Equation e, Injection e d0)
-  => e b -> PreSystem e d d0 -> PreSystem e ('(a, b) ': d) d0
-(/\) eq (PreSystem sys) = PreSystem (equation @a @d0 eq `TL.cons` sys)
+  :: forall f (d0 :: [(k, *)]) (a :: k) b (d :: [(k, *)])
+  .  f b -> Species' f d d0 -> Species' f ('(a, b) ': d) d0
+(/\) eq (Species' sys) = Species' (eq `TL.cons` sys)
 
 infixr 3 /\
-
-class Alternative f => Sized f where
-  pay :: f a -> f a
-
-  (<.>) :: Natural -> f a -> f a
-  (<.>) = duplicate
 
 duplicate :: Alternative f => Natural -> f a -> f a
 duplicate 0 _ = empty
 duplicate n f = f <|> duplicate (n - 1) f
 
-class Sized e => Equation e where
-  type F e (a :: k) b
-  type Injection e (d :: [(k, *)]) :: Constraint
+type Assoc a d b = (Indexable a d, Lookup a d ~ b)
 
-  rhs_
-    :: (Injection e d, Assoc a d b)
-    => proxy a -> proxy' d
-    -> F e a b -> e b
-  equation_
-    :: Injection e d
-    => proxy a -> proxy' d
-    -> e b -> F e a b
-
-type Assoc a d b = (KnownNat (Index a d), Lookup a d ~ b)
-
-rhs
-  :: forall a d e b
-  .  (Equation e, Injection e d, Assoc a d b)
-  => F e a b -> e b
-rhs = rhs_ (Proxy @a) (Proxy @d)
-
-equation
-  :: forall a d e b
-  .  (Equation e, Injection e d)
-  => e b -> F e a b
-equation = equation_ (Proxy @a) (Proxy @d)
-
-lookupSys
-    :: forall a d e n proxy
-    .  (n ~ Index a d, KnownNat n, Injection e d, Equation e)
-    => System_ e d
-    -> e (Lookup a d)
-lookupSys = rhs @a @d . lookupSystem_ @a
-
-newtype Inject e a = Inject (e a)
-  deriving (Functor, Applicative, Alternative, Sized)
-
-instance Equation e => Equation (Inject e) where
-  type F (Inject e) a b = F e a b
-  type Injection (Inject e) d = (?injection :: System_ e d, Injection e d)
-
-  rhs_ (a :: proxy a) (d :: proxy' d) _ =
-    Inject (rhs_ a d (lookupSystem_ @a @d ?injection))
-  equation_ a d (Inject e) = equation_ a d e
-
-newtype GFunction x a = GFunction ((?gfx :: x) => x)
-
-instance Num x => Equation (GFunction x) where
-  type F (GFunction x) a b = x
-  type Injection (GFunction x) d = (?gfx :: x)
-
-  rhs_ _ _ = GFunction
-  equation_ _ _ (GFunction f) = f
+newtype GFunction x b = GFunction x
 
 instance Functor (GFunction x) where
   fmap _ (GFunction x) = GFunction x
@@ -165,17 +118,10 @@ instance Num x => Alternative (GFunction x) where
   empty = GFunction 0
   GFunction x1 <|> GFunction x2 = GFunction $ x1 + x2
 
-instance Num x => Sized (GFunction x) where
-  pay (GFunction x) = GFunction (?gfx * x)
+xGFunction :: Num x => x -> Pay (GFunction x)
+xGFunction x1 (GFunction x0) = GFunction (x1 * x0)
 
-data WFunctor x f a = WFunctor !((?gfx :: x) => x) ((?gfx :: x) => f a)
-
-instance (Num x, WAlternative x f) => Equation (WFunctor x f) where
-  type F (WFunctor x f) a b = (x, f b)
-  type Injection (WFunctor x f) d = (?gfx :: x)
-
-  rhs_ _ _ (x, f) = WFunctor x f
-  equation_ _ _ ~(WFunctor x f) = (x, f)
+data WFunctor x f a = WFunctor !x (f a)
 
 instance Functor m => Functor (WFunctor x m) where
   fmap f (WFunctor x m) = WFunctor x (fmap f m)
@@ -188,8 +134,8 @@ instance (Num x, WAlternative x m) => Alternative (WFunctor x m) where
   empty = WFunctor 0 (wempty @x)
   WFunctor x1 a1 <|> WFunctor x2 a2 = WFunctor (x1 + x2) (wplus (x1, a1) (x2, a2))
 
-instance (Num x, WAlternative x m) => Sized (WFunctor x m) where
-  pay (WFunctor x a) = WFunctor (?gfx * x) (wincr @x a)
+xWFunctor :: Num x => x -> Pay (WFunctor x f)
+xWFunctor x1 (WFunctor x0 f) = WFunctor (x1 * x0) f
 
 class Applicative m => WAlternative x m where
   wempty :: m a
@@ -197,41 +143,30 @@ class Applicative m => WAlternative x m where
   wincr :: m a -> m a
   wincr = id
 
-class (x ~ F e a b) => EqualsF (e :: * -> *) x a b
-instance (x ~ F e a b) => EqualsF e x a b
+class Coercible x (f b) => CoerciblesF x (f :: * -> *) b
+instance Coercible x (f b) => CoerciblesF x f b
 
 -- Quite unsafe.
 applySystem
-  :: forall e d x
-  .  (ForallV (EqualsF e x), Injection e d)
-  => (Injection (Inject e) d => System_ (Inject e) d)
-  -> Vector x -> Vector x
-applySystem f xs =
-  coerceToVector (let ?injection = coerceFromVector xs in f)
-  where
-    coerceToVector :: System_ (Inject e) d -> Vector x
-    coerceFromVector :: Vector x -> System_ e d
-    coerceToVector = unsafeCoerce
-    coerceFromVector = unsafeCoerce
-
-type IGF x = Inject (GFunction x)
+  :: forall f d x
+  .  ForallV (CoerciblesF x f)
+  => System_ f d
+  -> Pay f -> Vector x -> Vector x
+applySystem (System_ sys) x = unsafeCoerce (sys x)
 
 applySystemGF
   :: forall d x
   .  Num x
-  => (Injection (IGF x) d => System_ (IGF x) d)
+  => System_ (GFunction x) d
   -> x -> Vector x -> Vector x
-applySystemGF f x = let ?gfx = x in applySystem @(GFunction x) @d f
-
-type PGF x = Pointed (GFunction x)
-type IPGF x = Inject (PGF x)
+applySystemGF f x = applySystem f (xGFunction x)
 
 applySystemPGF
   :: forall d x
   .  Num x
-  => (Injection (IPGF x) d => System_ (IPGF x) d)
+  => System_ (Pointed (GFunction x)) d
   -> x -> Vector [x] -> Vector [x]
-applySystemPGF f x = let ?gfx = x in applySystem @(PGF x) @d f
+applySystemPGF f x = applySystem f (xPointed (xGFunction x))
 
 newtype Pointed f a = Pointed [f a]
 
@@ -241,31 +176,24 @@ takePointed n (Pointed f) = take n f
 instance Functor f => Functor (Pointed f) where
   fmap f (Pointed v) = Pointed ((fmap . fmap) f v)
 
-instance Sized f => Applicative (Pointed f) where
+instance Alternative f => Applicative (Pointed f) where
   pure a = Pointed (pure a : repeat empty)
   Pointed fs <*> Pointed xs = Pointed (convolute fs xs)
     where
       convolute fs xs = zipWith sumOfProducts [0 ..] ((tail . inits) xs)
       sumOfProducts k x = asum (zipWith3 (times k) [0 ..] fs (reverse x))
-      times k k1 f x = binomial k k1 <.> f <*> x
+      times k k1 f x = duplicate (binomial k k1) f <*> x
 
-instance Sized f => Alternative (Pointed f) where
+instance Alternative f => Alternative (Pointed f) where
   empty = Pointed []
   Pointed [] <|> ys = ys
   xs <|> Pointed [] = xs
   Pointed xs <|> Pointed ys = Pointed (zipWith (<|>) xs ys)
 
-instance Sized f => Sized (Pointed f) where
-  pay (Pointed fs) = Pointed self
-    where
-      self = zipWith' (<|>) (empty : self) (fmap pay fs)
-
-instance Equation f => Equation (Pointed f) where
-  type F (Pointed f) a b = [F f a b]
-  type Injection (Pointed f) d = Injection f d
-
-  rhs_ a d = Pointed . fmap (rhs_ a d)
-  equation_ a d (Pointed f) = fmap (equation_ a d) f
+xPointed :: Alternative f => Pay f -> Pay (Pointed f)
+xPointed x (Pointed fs) = Pointed self
+  where
+    self = zipWith' (<|>) (empty : self) (fmap x fs)
 
 zipWith' :: (a -> a -> a) -> [a] -> [a] -> [a]
 zipWith' f (x : xs) ~(y : ys) = f x y : zipWith' f xs ys
@@ -290,47 +218,34 @@ instance Alternative Coefficients where
   empty = Coefficients (repeat 0)
   Coefficients xs <|> Coefficients ys = Coefficients (zipWith (+) xs ys)
 
-instance Sized Coefficients where
-  pay (Coefficients xs) = Coefficients (0 : xs)
+xCoefficients :: Pay Coefficients
+xCoefficients (Coefficients xs) = Coefficients (0 : xs)
 
-newtype Wrapped f a = Wrapped (f a)
-  deriving (Functor, Applicative, Alternative, Sized)
-
-instance Sized f => Equation (Wrapped f) where
-  type F (Wrapped f) a b = Wrapped f b
-  type Injection (Wrapped f) d = ()
-
-  rhs_ _ _ = id
-  equation_ _ _ = id
-
-type System d = forall e. (Equation e, Injection e d) => System_ e d
+type System d = forall f. Alternative f => System_ f d
 
 type family Length d where
   Length '[] = 0
   Length (_ ': d) = 1 + Length d
 
 sizedGenerator
-  :: forall a d m b n
+  :: forall a (d :: [(k, *)]) m b
   .  (KnownNat (Length d), Assoc a d b, WAlternative Double m)
   => System d
   -> Options
   -> m b
-sizedGenerator sys opts = snd (gs !! points opts)
+sizedGenerator sys opts = g
   where
-    zipOracle = V.zipWith (zipWith (\x (_, m) -> (x, m))) oracle
-    gs = lookupSystem_ @a sys_
-    sys_ :: System_ (Inject (Pointed (WFunctor Double m))) d
-    sys_ =
-      let ?gfx = x
-          ?injection = coerceEndo zipOracle sys_
-      in sys
+    zipOracle = coerceEndo (V.zipWith (zipWith (\x (_, m) -> (x, m))) oracle)
       where
         coerceEndo
           :: (Vector [(Double, m Any)] -> Vector [(Double, m Any)])
-          -> System_ (Inject (Pointed (WFunctor Double m))) d
-          -> System_ (Pointed (WFunctor Double m)) d
+          -> Species (Pointed (WFunctor Double m)) d
+          -> Species (Pointed (WFunctor Double m)) d
         coerceEndo = unsafeCoerce
-    (x, oracle) = solveSized @a @d sys opts
+    WFunctor _ g = gs !! points opts
+    Pointed gs = species @a s
+    s = runSystem_ sys (xPointed (xWFunctor x0)) (zipOracle s)
+    (x0, oracle) = solveSized @a @d sys opts
 
 solveSized
   :: forall a d b n
