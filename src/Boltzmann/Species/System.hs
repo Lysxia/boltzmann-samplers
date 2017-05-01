@@ -71,12 +71,37 @@ species (Species v) = admitEqualIndices @a @f @d $
 
 type Pay f = forall b. f b -> f b
 
-newtype System_ f d = System_
-  { runSystem_ :: Pay f -> Species f d -> Species f d
+data family Alias (r :: [(*, *)]) (f :: * -> *)
+
+data FAlias r f where
+  (:&) :: (f b -> f a) -> FAlias r f -> FAlias ('(a, b) ': r) f
+  ANil :: FAlias '[] f
+
+class Aliasing r f where
+  ($~) :: ('Just b ~ LookupM a r, Aliasing_ a r) => Alias r f -> f b -> f a
+
+class Aliasing_ a r where
+  ($~.) :: ('Just b ~ LookupM a r) => FAlias r f -> f b -> f a
+
+type family LookupM a (r :: [(*, *)]) :: Maybe * where
+  LookupM a ('(a, b) ': r) = 'Just b
+  LookupM a (ab' ': r) = LookupM a r
+  LookupM a '[] = 'Nothing
+
+instance (LookupM a (c ': r) ~ LookupM a r, Aliasing_ a r) => Aliasing_ a (c ': r) where
+  (_ :& alias) $~. f = alias $~. f
+
+instance {-# OVERLAPPING #-} Aliasing_ a ('(a, b) ': r) where
+  (g :& _) $~. f = g f
+
+newtype System_ r f d = System_
+  { runSystem_ :: Alias r f -> Pay f -> Species f d -> Species f d
   }
 
-system :: (Pay f -> Species f d -> Species' f d d) -> System_ f d
-system sys = System_ (\x -> toSpecies . sys x)
+system
+  :: (Alias r f -> Pay f -> Species f d -> Species' f d d)
+  -> System_ r f d
+system sys = System_ (\r x -> toSpecies . sys r x)
 
 toSpecies :: Species' f d d -> Species f d
 toSpecies (Species' l) = Species (TL.toVector l)
@@ -92,9 +117,7 @@ newtype Species' f d d0 = Species' (TypeList (MapSnd f d))
 none :: Species' f '[] d0
 none = Species' TL.empty
 
-(/\)
-  :: forall f (d0 :: [(k, *)]) (a :: k) b (d :: [(k, *)])
-  .  f b -> Species' f d d0 -> Species' f ('(a, b) ': d) d0
+(/\) :: f b -> Species' f d d0 -> Species' f ('(a, b) ': d) d0
 (/\) eq (Species' sys) = Species' (eq `TL.cons` sys)
 
 infixr 3 /\
@@ -118,6 +141,11 @@ instance Num x => Alternative (GFunction x) where
   empty = GFunction 0
   GFunction x1 <|> GFunction x2 = GFunction $ x1 + x2
 
+data instance Alias r (GFunction x) = GFAlias
+
+instance Aliasing r (GFunction x) where
+  _ $~ GFunction x = GFunction x
+
 xGFunction :: Num x => x -> Pay (GFunction x)
 xGFunction x1 (GFunction x0) = GFunction (x1 * x0)
 
@@ -134,6 +162,11 @@ instance (Num x, WAlternative x m) => Alternative (WFunctor x m) where
   empty = WFunctor 0 (wempty @x)
   WFunctor x1 a1 <|> WFunctor x2 a2 = WFunctor (x1 + x2) (wplus (x1, a1) (x2, a2))
 
+newtype instance Alias r (WFunctor x f) = WFAlias (FAlias r f)
+
+instance Aliasing r (WFunctor x f) where
+  WFAlias alias $~ WFunctor x f = WFunctor x (alias $~. f)
+
 xWFunctor :: Num x => x -> Pay (WFunctor x f)
 xWFunctor x1 (WFunctor x0 f) = WFunctor (x1 * x0) f
 
@@ -148,25 +181,22 @@ instance Coercible x (f b) => CoerciblesF x f b
 
 -- Quite unsafe.
 applySystem
-  :: forall f d x
-  .  ForallV (CoerciblesF x f)
-  => System_ f d
-  -> Pay f -> Vector x -> Vector x
-applySystem (System_ sys) x = unsafeCoerce (sys x)
+  :: ForallV (CoerciblesF x f)
+  => System_ r f d
+  -> Alias r f -> Pay f -> Vector x -> Vector x
+applySystem (System_ sys) alias x = unsafeCoerce (sys alias x)
 
 applySystemGF
-  :: forall d x
-  .  Num x
-  => System_ (GFunction x) d
+  :: Num x
+  => System_ r (GFunction x) d
   -> x -> Vector x -> Vector x
-applySystemGF f x = applySystem f (xGFunction x)
+applySystemGF f x = applySystem f GFAlias (xGFunction x)
 
 applySystemPGF
-  :: forall d x
-  .  Num x
-  => System_ (Pointed (GFunction x)) d
+  :: Num x
+  => System_ r (Pointed (GFunction x)) d
   -> x -> Vector [x] -> Vector [x]
-applySystemPGF f x = applySystem f (xPointed (xGFunction x))
+applySystemPGF f x = applySystem f (PAlias GFAlias) (xPointed (xGFunction x))
 
 newtype Pointed f a = Pointed [f a]
 
@@ -189,6 +219,11 @@ instance Alternative f => Alternative (Pointed f) where
   Pointed [] <|> ys = ys
   xs <|> Pointed [] = xs
   Pointed xs <|> Pointed ys = Pointed (zipWith (<|>) xs ys)
+
+newtype instance Alias r (Pointed f) = PAlias (Alias r f)
+
+instance Aliasing r f => Aliasing r (Pointed f) where
+  PAlias r $~ Pointed v = Pointed (fmap (r $~) v)
 
 xPointed :: Alternative f => Pay f -> Pay (Pointed f)
 xPointed x (Pointed fs) = Pointed self
@@ -221,19 +256,20 @@ instance Alternative Coefficients where
 xCoefficients :: Pay Coefficients
 xCoefficients (Coefficients xs) = Coefficients (0 : xs)
 
-type System d = forall f. Alternative f => System_ f d
+type System r d = forall f. Alternative f => System_ r f d
 
 type family Length d where
   Length '[] = 0
   Length (_ ': d) = 1 + Length d
 
 sizedGenerator
-  :: forall a (d :: [(k, *)]) m b
+  :: forall a r (d :: [(k, *)]) m b
   .  (KnownNat (Length d), Assoc a d b, WAlternative Double m)
-  => System d
+  => FAlias r m
+  -> System r d
   -> Options
   -> m b
-sizedGenerator sys opts = g
+sizedGenerator alias sys opts = g
   where
     zipOracle = coerceEndo (V.zipWith (zipWith (\x (_, m) -> (x, m))) oracle)
       where
@@ -244,18 +280,18 @@ sizedGenerator sys opts = g
         coerceEndo = unsafeCoerce
     WFunctor _ g = gs !! points opts
     Pointed gs = species @a s
-    s = runSystem_ sys (xPointed (xWFunctor x0)) (zipOracle s)
-    (x0, oracle) = solveSized @a @d sys opts
+    s = runSystem_ sys (PAlias (WFAlias alias)) (xPointed (xWFunctor x0)) (zipOracle s)
+    (x0, oracle) = solveSized @a sys opts
 
 solveSized
-  :: forall a d b n
+  :: forall a r d b n
   .  (KnownNat (Length d), Assoc a d b)
-  => System d
+  => System r d
   -> Options
   -> (Double, Vector [Double])
 solveSized sys opts =
   fmap (shape n (k + 2) . fromJust) .
-  search (solveAt @d sys k) $
+  search (solveAt sys k) $
   checkSize (averageSize opts)
   where
     k = points opts
@@ -271,9 +307,9 @@ solveSized sys opts =
     checkSize _ Nothing = False
 
 solveAt
-  :: forall d
+  :: forall r d
   .  KnownNat (Length d)
-  => System d
+  => System r d
   -> Int
   -> Double
   -> Maybe (Vector Double)
@@ -282,7 +318,7 @@ solveAt sys k x = fixedPoint defSolveArgs (phi x) x0
     n = fromInteger (natVal (Proxy @(Length d)))
     x0 = V.replicate (n * (k + 2)) 0
     phi :: (AD.Mode x, AD.Scalar x ~ Double) => Double -> Vector x -> Vector x
-    phi x = unshape (k + 2) . applySystemPGF @d sys (AD.auto x) . shape n (k + 2)
+    phi x = unshape (k + 2) . applySystemPGF sys (AD.auto x) . shape n (k + 2)
 
 shape :: Int -> Int -> Vector x -> Vector [x]
 shape n k v = V.generate n $ \i -> V.toList (V.slice (i * k) k v)
