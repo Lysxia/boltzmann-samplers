@@ -28,7 +28,7 @@ class AsSpecies a d where
   default asSpecies
     :: (Alternative f, GAsSpecies a d)
     => Pay f -> Species f d -> f a
-  asSpecies = gspecies
+  asSpecies x = x . gspecies
 
 class (KnownNat (Index a d), Lookup a d ~ a) => Assoc' d a
 instance (KnownNat (Index a d), Lookup a d ~ a) => Assoc' d a
@@ -38,8 +38,8 @@ type GAsSpecies a d = (ADT a, Constraints a (Assoc' d))
 gspecies
   :: forall f d a
   .  (Alternative f, GAsSpecies a d)
-  => Pay f -> Species f d -> f a
-gspecies x s = x $
+  => Species f d -> f a
+gspecies s =
   createA (For :: For (Assoc' d)) (species @a s :: forall a. Assoc' d a => f a)
 
 class AsSpeciesIf (c :: Maybe *) r a d where
@@ -104,3 +104,25 @@ asSystemFor
   .  (Alternative f, Aliasing r f, d ~ Duplicate (TypesIn' r a), AsSpecies' r d d)
   => System_ r f d
 asSystemFor = asSystem
+
+instance (Assoc a d a, Assoc [a] d [a]) => AsSpecies [a] d where
+  asSpecies _ = gspecies
+
+instance Assoc a d a => AsSpecies (Maybe a) d where
+  asSpecies _ = gspecies
+
+instance (Assoc a d a, Assoc b d b) => AsSpecies (Either a b) d where
+  asSpecies _ = gspecies
+
+instance (Assoc a d a, Assoc b d b) => AsSpecies (a, b) d where
+  asSpecies _ = gspecies
+
+instance (Assoc a d a, Assoc b d b, Assoc c d c) => AsSpecies (a, b, c) d where
+  asSpecies _ = gspecies
+
+instance (Assoc a d a, Assoc b d b, Assoc c d c, Assoc e d e) => AsSpecies (a, b, c, e) d where
+  asSpecies _ = gspecies
+
+instance AsSpecies () d
+instance AsSpecies Bool d
+instance AsSpecies Ordering d
