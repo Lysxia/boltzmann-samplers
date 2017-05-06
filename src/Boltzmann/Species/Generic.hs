@@ -15,12 +15,14 @@
 module Boltzmann.Species.Generic where
 
 import Control.Applicative
-import Boltzmann.Species.System
 import Generics.OneLiner
 import GHC.Generics
 import GHC.TypeLits
 
 import Data.TypeMap.Static
+
+import Boltzmann.Options
+import Boltzmann.Species.System
 
 class AsSpecies a d where
   asSpecies :: Alternative f => Pay f -> Species f d -> f a
@@ -53,9 +55,9 @@ instance AsSpecies a d => AsSpeciesIf 'Nothing r a d where
 instance (Aliasing_ a r, Assoc b d b) => AsSpeciesIf ('Just b) r a d where
   asSpeciesIf alias x s = alias $~ species @b s
 
-type family TypesIn (r :: [(*, *)]) a (as :: [*]) :: [*]
+type family TypesIn a :: [*]
 
-type TypesIn' r a = TypesIn r a '[]
+type Types' r a = Types r a '[]
 
 type Types r a (as :: [*]) = TypesIfElem (Elem a as) r a as
 
@@ -69,18 +71,22 @@ type family TypesIfElem (b :: Bool) (r :: [(*, *)]) a (as :: [*]) :: [*] where
   TypesIfElem 'False r a as = TypesIfAlias (LookupM a r) r a (a ': as)
 
 type family TypesIfAlias (b :: Maybe *) (r :: [(*, *)]) a (as :: [*]) :: [*] where
-  TypesIfAlias 'Nothing r a as = TypesIn r a as
+  TypesIfAlias 'Nothing r a as = FoldTypes r (TypesIn a) as
   TypesIfAlias ('Just b) r a as = Types r b as
 
-type GTypesIn r a as = GTypesIn_ r (Rep a) as
+type GTypesIn a = GTypesIn_ (Rep a) '[]
 
-type family GTypesIn_ r (f :: * -> *) (as :: [*]) :: [*] where
-  GTypesIn_ r (K1 i a) as = Types r a as
-  GTypesIn_ r (f :*: g) as = GTypesIn_ r f (GTypesIn_ r g as)
-  GTypesIn_ r (f :+: g) as = GTypesIn_ r f (GTypesIn_ r g as)
-  GTypesIn_ r (M1 i c f) as = GTypesIn_ r f as
-  GTypesIn_ r U1 as = as
-  GTypesIn_ r V1 as = as
+type family GTypesIn_ (f :: * -> *) (as :: [*]) :: [*] where
+  GTypesIn_ (K1 i a) as = a ': as
+  GTypesIn_ (f :*: g) as = GTypesIn_ f (GTypesIn_ g as)
+  GTypesIn_ (f :+: g) as = GTypesIn_ f (GTypesIn_ g as)
+  GTypesIn_ (M1 i c f) as = GTypesIn_ f as
+  GTypesIn_ U1 as = as
+  GTypesIn_ V1 as = as
+
+type family FoldTypes (r :: [(*, *)]) (bs :: [*]) (as :: [*]) :: [*] where
+  FoldTypes r '[] as = as
+  FoldTypes r (a ': bs) as = Types r a (FoldTypes r bs as)
 
 class AsSpecies' r d d0 where
   asSpecies' :: (Alternative f, Aliasing r f) => Alias r f -> Pay f -> Species f d0 -> Species' f d d0
@@ -98,12 +104,23 @@ asSystem = system asSpecies'
 
 type family Duplicate (as :: [*]) :: [(*, *)] where
   Duplicate (a ': as) = ('(a, a) ': Duplicate as)
+  Duplicate '[] = '[]
 
 asSystemFor
   :: forall a r f d
-  .  (Alternative f, Aliasing r f, d ~ Duplicate (TypesIn' r a), AsSpecies' r d d)
+  .  (Alternative f, Aliasing r f, d ~ Duplicate (Types' r a), AsSpecies' r d d)
   => System_ r f d
 asSystemFor = asSystem
+
+type instance TypesIn [a] = '[a]
+type instance TypesIn (Maybe a) = '[a]
+type instance TypesIn (Either a b) = '[a, b]
+type instance TypesIn (a, b) = '[a, b]
+type instance TypesIn (a, b, c) = '[a, b, c]
+type instance TypesIn (a, b, c, e) = '[a, b, c, e]
+type instance TypesIn () = '[]
+type instance TypesIn Bool = '[]
+type instance TypesIn Ordering = '[]
 
 instance (Assoc a d a, Assoc [a] d [a]) => AsSpecies [a] d where
   asSpecies _ = gspecies
@@ -126,3 +143,13 @@ instance (Assoc a d a, Assoc b d b, Assoc c d c, Assoc e d e) => AsSpecies (a, b
 instance AsSpecies () d
 instance AsSpecies Bool d
 instance AsSpecies Ordering d
+
+sizedGeneratorFor
+  :: forall a r d m
+  .  ( KnownNat (Length d), Assoc a d a, WAlternative Double m
+     , d ~ Duplicate (Types' r a)
+     , AsSpecies' r d d )
+  => FAlias r m
+  -> Options
+  -> m a
+sizedGeneratorFor alias opts = sizedGenerator @_ @a alias (asSystemFor @a) opts
