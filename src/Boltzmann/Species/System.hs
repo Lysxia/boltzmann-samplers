@@ -82,6 +82,8 @@ data FAlias r f where
   (:&) :: (f b -> f a) -> FAlias r f -> FAlias ('(a, b) ': r) f
   ANil :: FAlias '[] f
 
+infixr 3 :&
+
 class Aliasing r f where
   ($~) :: ('Just b ~ LookupM a r, Aliasing_ a r) => Alias r f -> f b -> f a
 
@@ -239,10 +241,12 @@ instance Alternative f => Applicative (Pointed f) where
       times k k1 f x = duplicate (binomial k k1) f <*> x
 
 instance Alternative f => Alternative (Pointed f) where
-  empty = Pointed []
-  Pointed [] <|> ys = ys
-  xs <|> Pointed [] = xs
-  Pointed xs <|> Pointed ys = Pointed (zipWith (<|>) xs ys)
+  empty = Pointed (repeat empty)
+  -- Pointed [] <|> ys = ys
+  -- xs <|> Pointed [] = xs
+  Pointed xs <|> Pointed ys = Pointed (zipWith' (<|>) xs ys)
+
+zipWith' f ~(x : xs) ~(y : ys) = f x y : zipWith' f xs ys
 
 newtype instance Alias r (Pointed f) = PAlias (Alias r f)
 
@@ -250,13 +254,7 @@ instance Aliasing r f => Aliasing r (Pointed f) where
   PAlias r $~ Pointed v = Pointed (fmap (r $~) v)
 
 xPointed :: Alternative f => Pay f -> Pay (Pointed f)
-xPointed x (Pointed fs) = Pointed self
-  where
-    self = zipWith' (<|>) (empty : self) (fmap x fs)
-
-zipWith' :: (a -> a -> a) -> [a] -> [a] -> [a]
-zipWith' f (x : xs) ~(y : ys) = f x y : zipWith' f xs ys
-zipWith' _ _ _ = error "pay empty"
+xPointed x (Pointed fs) = Pointed (scanl1 (<|>) (fmap x fs))
 
 newtype Coefficients a = Coefficients [Integer]
 
@@ -277,13 +275,35 @@ instance Alternative Coefficients where
   empty = Coefficients (repeat 0)
   Coefficients xs <|> Coefficients ys = Coefficients (zipWith (+) xs ys)
 
+data instance Alias r Coefficients = CAlias
+
+instance Aliasing r Coefficients where
+  _ $~ Coefficients cs = Coefficients cs
+
 xCoefficients :: Pay Coefficients
 xCoefficients (Coefficients xs) = Coefficients (0 : xs)
+
+coeffSystem
+  :: forall a r d b
+  .  (Assoc a d b)
+  => System_ r Coefficients d -> Coefficients b
+coeffSystem (System_ sys) = species @a self
+  where
+    self = sys CAlias xCoefficients self
+
+pCoeffSystem
+  :: forall a r d b
+  .  (Assoc a d b)
+  => System_ r (Pointed Coefficients) d -> Pointed Coefficients b
+pCoeffSystem (System_ sys) = species @a self
+  where
+    self = sys (PAlias CAlias) (xPointed xCoefficients) self
+    -- unsafeCoerce (V.replicate 30 (Pointed (repeat (empty :: Coefficients b))))) -- self
 
 -- | A combinatorial system describing a family of recursive structures.
 --
 -- Constructed using 'system'.
-type System r d = forall f. Alternative f => System_ r f d
+type System r d = forall f. (Alternative f, Aliasing r f) => System_ r f d
 
 type family Length d where
   Length '[] = 0
