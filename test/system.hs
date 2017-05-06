@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeApplications #-}
 
 import Control.Applicative
@@ -27,11 +28,11 @@ main = defaultMain
         unshape 2 (applySystemPGF s 2 (V.fromList [[3, 4], [5, 8], [7, 10]]))
   , testCase "coeffs" $
       [1, 1, 2] @=?
-        let Wrapped (Coefficients cs) = lookupSys @"tree" s
+        let Coefficients cs = coeffSystem @"tree" s
         in take 3 cs
   , testCase "pointed" $
       [[1, 1, 2], [0, 1, 4], [0, 1, 6]] @=?
-        let Wrapped (Pointed css) = lookupSys @"tree" s
+        let Pointed css = pCoeffSystem @"tree" s
         in [[c | c <- take 3 cs] | Coefficients cs <- take 3 css]
   , testCase "shape" $
       let v = V.fromList [0 .. 20]
@@ -40,7 +41,7 @@ main = defaultMain
       V.fromList (replicate 6 0) @=?
         unshape 2 (V.fromList (replicate 3 (repeat (0 :: Int))))
   , testCase "solveAt" $
-      case solveAt @D s 0 0.15 of
+      case solveAt s 0 0.15 of
         Nothing -> assertFailure "Solver failed"
         Just x -> do
           let y = (unshape 2 . applySystemPGF s 0.15 . shape 3 2) x
@@ -49,7 +50,7 @@ main = defaultMain
           else
             print (x, y) >> assertFailure "Not a fixpoint"
   , testCase "solveSized" $ do
-      let (x, v) = solveSized @"tree" @D s (sizedOptions 10)
+      let (x, v) = solveSized @"tree" s (sizedOptions 10)
           [z, z'] = v V.! 2
       if abs (10 - z' / z) < 10 ** (-4) then
         return ()

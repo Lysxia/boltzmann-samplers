@@ -16,7 +16,7 @@ iters = 10000
 -- cumulatedSize approx. 100000
 
 generator :: IO T
-generator = sizedGenerator @"tree" @D s (sizedOptions tgtSize)
+generator = sizedGenerator @_ @"tree" ANil s (sizedOptions tgtSize)
 
 instance WAlternative Double IO where
   wempty = fail "wempty"

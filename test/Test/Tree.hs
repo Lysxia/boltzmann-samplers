@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Test.Tree where
@@ -14,16 +15,16 @@ size (N l r) = 1 + size l + size r
 
 type D = '[ '("leaf", T), '("node", T), '("tree", T)]
 
-s :: System D
-s = system $
+s :: System '[] D
+s = system $ \_ pay s ->
   ( pure L
   ) /\
-  ( let tree = lookupSys @"tree" s
+  ( let tree = species @"tree" s
     in pay (N <$> tree <*> tree)
   ) /\
-  ( let leaf = lookupSys @"leaf" s
-        node = lookupSys @"node" s
+  ( let leaf = species @"leaf" s
+        node = species @"node" s
     in leaf <|> node
   ) /\
-  emptySys
+  none
 
