@@ -45,6 +45,7 @@ import Boltzmann.Data.Common (binomial)
 import Boltzmann.Options
 import Boltzmann.Solver
 
+-- | Heterogeneous map of combinatorial species with arbitrarily kinded indices.
 newtype Species (f :: * -> *) (d :: [(k, *)]) = Species (TypeVector (MapSnd f d))
 
 type family MapSnd f d where
@@ -59,8 +60,10 @@ admitEqualIndices r =
   case unsafeCoerce (Refl :: 0 :~: 0) :: Index a d :~: Index a (MapSnd f d) of
     Refl -> r
 
+-- | @a@ is in the domain of the association list @d@.
 type Indexable a d = KnownNat (Index a d)
 
+-- | Access a species by its index.
 species
   :: forall a d f
   .  Indexable a d
@@ -69,10 +72,12 @@ species
 species (Species v) = admitEqualIndices @a @f @d $
   coerceMapLookup @a @f @d (TV.index @a v)
 
+-- | Size shifts.
 type Pay f = forall b. f b -> f b
 
 data family Alias (r :: [(*, *)]) (f :: * -> *)
 
+-- | A map of transformations @f b -> f a@ indexed by the type @a@.
 data FAlias r f where
   (:&) :: (f b -> f a) -> FAlias r f -> FAlias ('(a, b) ': r) f
   ANil :: FAlias '[] f
@@ -94,10 +99,18 @@ instance (LookupM a (c ': r) ~ LookupM a r, Aliasing_ a r) => Aliasing_ a (c ': 
 instance {-# OVERLAPPING #-} Aliasing_ a ('(a, b) ': r) where
   (g :& _) $~. f = g f
 
+-- | See 'system'.
 newtype System_ r f d = System_
   { runSystem_ :: Alias r f -> Pay f -> Species f d -> Species f d
   }
 
+-- | Constructor of systems.
+--
+-- A (polynomial) function @F(x, y)@ describes the system @y = F(x, y)@.
+--
+-- - @'Alias' r f@: a family of isomorphisms between combinatorial species;
+-- - @'Pay' f@: shift the sizes of a structure by 1 (multiplication by @x@);
+-- - @'Species' f d@: a vector of combinatorial species (@y@).
 system
   :: (Alias r f -> Pay f -> Species f d -> Species' f d d)
   -> System_ r f d
@@ -106,7 +119,8 @@ system sys = System_ (\r x -> toSpecies . sys r x)
 toSpecies :: Species' f d d -> Species f d
 toSpecies (Species' l) = Species (TL.toVector l)
 
--- |
+-- | Intermediate representation of heterogeneous map of species,
+-- tagged with the type of a whole, final map.
 --
 -- @
 -- Species' f \'['(a1, b1), '(a2, b2), '(a3, b3)]
@@ -114,14 +128,21 @@ toSpecies (Species' l) = Species (TL.toVector l)
 -- @
 newtype Species' f d d0 = Species' (TypeList (MapSnd f d))
 
+-- | Empty vector.
 none :: Species' f '[] d0
 none = Species' TL.empty
 
+-- | Heterogeneous cons.
 (/\) :: f b -> Species' f d d0 -> Species' f ('(a, b) ': d) d0
 (/\) eq (Species' sys) = Species' (eq `TL.cons` sys)
 
 infixr 3 /\
 
+-- |
+--
+-- @
+-- 'duplicate' n f = f '<|>' ... '<|>' f  -- n times
+-- @
 duplicate :: Alternative f => Natural -> f a -> f a
 duplicate 0 _ = empty
 duplicate n f = f <|> duplicate (n - 1) f
@@ -170,9 +191,12 @@ instance Aliasing r (WFunctor x f) where
 xWFunctor :: Num x => x -> Pay (WFunctor x f)
 xWFunctor x1 (WFunctor x0 f) = WFunctor (x1 * x0) f
 
+-- | Alternatives with weighted choice.
 class Applicative m => WAlternative x m where
   wempty :: m a
   wplus :: (x, m a) -> (x, m a) -> m a
+
+  -- | Increment size.
   wincr :: m a -> m a
   wincr = id
 
@@ -256,12 +280,16 @@ instance Alternative Coefficients where
 xCoefficients :: Pay Coefficients
 xCoefficients (Coefficients xs) = Coefficients (0 : xs)
 
+-- | A combinatorial system describing a family of recursive structures.
+--
+-- Constructed using 'system'.
 type System r d = forall f. Alternative f => System_ r f d
 
 type family Length d where
   Length '[] = 0
   Length (_ ': d) = 1 + Length d
 
+-- | Create a generator for a given combinatorial species.
 sizedGenerator
   :: forall a r (d :: [(k, *)]) m b
   .  (KnownNat (Length d), Assoc a d b, WAlternative Double m)
