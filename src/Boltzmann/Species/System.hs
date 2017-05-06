@@ -298,7 +298,6 @@ pCoeffSystem
 pCoeffSystem (System_ sys) = species @a self
   where
     self = sys (PAlias CAlias) (xPointed xCoefficients) self
-    -- unsafeCoerce (V.replicate 30 (Pointed (repeat (empty :: Coefficients b))))) -- self
 
 -- | A combinatorial system describing a family of recursive structures.
 --
@@ -319,7 +318,8 @@ sizedGenerator
   -> m b
 sizedGenerator alias sys opts = g
   where
-    zipOracle = coerceEndo (V.zipWith (zipWith (\x (_, m) -> (x, m))) oracle)
+    zipOracle = coerceEndo (\v ->
+      V.imap (\i o -> zipWith (\x ~(_, m) -> (x, m)) o (v V.! i)) oracle)
       where
         coerceEndo
           :: (Vector [(Double, m Any)] -> Vector [(Double, m Any)])
