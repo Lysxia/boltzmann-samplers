@@ -1,3 +1,5 @@
+-- | Interface to define combinatorial species.
+
 module Boltzmann.Species
   (
   -- * Combinatorial systems
