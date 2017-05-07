@@ -122,27 +122,20 @@ type instance TypesIn () = '[]
 type instance TypesIn Bool = '[]
 type instance TypesIn Ordering = '[]
 
-instance (Assoc a d a, Assoc [a] d [a]) => AsSpecies [a] d where
-  asSpecies _ = gspecies
-
-instance Assoc a d a => AsSpecies (Maybe a) d where
-  asSpecies _ = gspecies
-
-instance (Assoc a d a, Assoc b d b) => AsSpecies (Either a b) d where
-  asSpecies _ = gspecies
-
-instance (Assoc a d a, Assoc b d b) => AsSpecies (a, b) d where
-  asSpecies _ = gspecies
-
-instance (Assoc a d a, Assoc b d b, Assoc c d c) => AsSpecies (a, b, c) d where
-  asSpecies _ = gspecies
-
-instance (Assoc a d a, Assoc b d b, Assoc c d c, Assoc e d e) => AsSpecies (a, b, c, e) d where
-  asSpecies _ = gspecies
-
+instance (Assoc a d a, Assoc [a] d [a]) => AsSpecies [a] d
+instance Assoc a d a => AsSpecies (Maybe a) d
+instance (Assoc a d a, Assoc b d b) => AsSpecies (Either a b) d
+instance (Assoc a d a, Assoc b d b) => AsSpecies (a, b) d
+instance (Assoc a d a, Assoc b d b, Assoc c d c) => AsSpecies (a, b, c) d
+instance (Assoc a d a, Assoc b d b, Assoc c d c, Assoc e d e) => AsSpecies (a, b, c, e) d
 instance AsSpecies () d
 instance AsSpecies Bool d
 instance AsSpecies Ordering d
+
+newtype Untagged a = Untagged a
+
+instance GAsSpecies a d => AsSpecies (Untagged a) d where
+  asSpecies _ = fmap Untagged . gspecies
 
 sizedGeneratorFor
   :: forall a r d m
