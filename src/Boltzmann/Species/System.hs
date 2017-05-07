@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImplicitParams #-}
@@ -172,29 +173,35 @@ instance Aliasing r (GFunction x) where
 xGFunction :: Num x => x -> Pay (GFunction x)
 xGFunction x1 (GFunction x0) = GFunction (x1 * x0)
 
-data WFunctor x f a = WFunctor !x (f a)
+data WFunctor x f a = WFunctor !x (f a) | WFEmpty
 
 instance Functor m => Functor (WFunctor x m) where
   fmap f (WFunctor x m) = WFunctor x (fmap f m)
+  fmap _ WFEmpty = WFEmpty
 
 instance (Num x, Applicative m) => Applicative (WFunctor x m) where
   pure a = WFunctor 1 (pure a)
   WFunctor xf f <*> WFunctor xa a = WFunctor (xf * xa) (f <*> a)
+  _ <*> _ = WFEmpty
 
 instance (Num x, WAlternative x m) => Alternative (WFunctor x m) where
-  empty = WFunctor 0 (wempty @x)
+  empty = WFEmpty
   WFunctor x1 a1 <|> WFunctor x2 a2 = WFunctor (x1 + x2) (wplus (x1, a1) (x2, a2))
+  WFEmpty <|> a = a
+  a <|> WFEmpty = a
 
 newtype instance Alias r (WFunctor x f) = WFAlias (FAlias r f)
 
 instance Aliasing r (WFunctor x f) where
   WFAlias alias $~ WFunctor x f = WFunctor x (alias $~. f)
+  _ $~ WFEmpty = WFEmpty
 
 xWFunctor :: Num x => x -> Pay (WFunctor x f)
 xWFunctor x1 (WFunctor x0 f) = WFunctor (x1 * x0) f
+xWFunctor _ WFEmpty = WFEmpty
 
 -- | Alternatives with weighted choice.
-class Applicative m => WAlternative x m where
+class Applicative m => WAlternative x m | m -> x where
   wempty :: m a
   wplus :: (x, m a) -> (x, m a) -> m a
 
@@ -242,8 +249,6 @@ instance Alternative f => Applicative (Pointed f) where
 
 instance Alternative f => Alternative (Pointed f) where
   empty = Pointed (repeat empty)
-  -- Pointed [] <|> ys = ys
-  -- xs <|> Pointed [] = xs
   Pointed xs <|> Pointed ys = Pointed (zipWith' (<|>) xs ys)
 
 zipWith' f ~(x : xs) ~(y : ys) = f x y : zipWith' f xs ys
@@ -299,6 +304,45 @@ pCoeffSystem (System_ sys) = species @a self
   where
     self = sys (PAlias CAlias) (xPointed xCoefficients) self
 
+newtype Free a = Free Free'
+  deriving Show
+
+data Free'
+  = Pure
+  | Ap Free' Free'
+  | Alt Free' Free'
+  | Empty
+  | Pay Free'
+  | S String
+  deriving Show
+
+instance Functor Free where
+  fmap _ (Free f) = Free f
+
+instance Applicative Free where
+  pure _ = Free Pure
+  Free f <*> Free a = Free (Ap f a)
+
+instance Alternative Free where
+  empty = Free Empty
+  Free a <|> Free b = Free (Alt a b)
+
+xFree :: Pay Free
+xFree (Free f) = Free (Pay f)
+
+data instance Alias r Free = FreeAlias
+
+instance Aliasing r Free where
+  _ $~ Free f = Free f
+
+freeSystem
+  :: forall a r d b
+  .  (Assoc a d b, KnownNat (Length d))
+  => System_ r (Pointed Free) d -> Pointed Free b
+freeSystem (System_ sys) = species @a (sys (PAlias FreeAlias) (xPointed xFree)
+  (unsafeCoerce (V.generate (fromIntegral $ natVal (Proxy @(Length d))) $ \i ->
+    Pointed [Free (S (show (i, j :: Integer))) | j <- [0 ..]])))
+
 -- | A combinatorial system describing a family of recursive structures.
 --
 -- Constructed using 'system'.
@@ -326,7 +370,9 @@ sizedGenerator alias sys opts = g
           -> Species (Pointed (WFunctor Double m)) d
           -> Species (Pointed (WFunctor Double m)) d
         coerceEndo = unsafeCoerce
-    WFunctor _ g = gs !! points opts
+    g = case gs !! points opts of
+      WFunctor _ g -> g
+      WFEmpty -> wempty
     Pointed gs = species @a s
     s = runSystem_ sys (PAlias (WFAlias alias)) (xPointed (xWFunctor x0)) (zipOracle s)
     (x0, oracle) = solveSized @a sys opts
