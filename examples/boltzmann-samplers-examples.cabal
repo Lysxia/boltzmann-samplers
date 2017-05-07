@@ -55,13 +55,3 @@ executable xml-example
     xml-conduit,
     boltzmann-samplers
   default-language: Haskell2010
-
-executable tree-example
-  main-is: tree.hs
-  ghc-options: -Wall
-  build-depends:
-    base,
-    QuickCheck,
-    vector,
-    boltzmann-samplers
-  default-language: Haskell2010
