@@ -42,7 +42,7 @@ gspecies
   .  (Alternative f, GAsSpecies a d)
   => Species f d -> f a
 gspecies s =
-  createA (For :: For (Assoc' d)) (species @a s :: forall a. Assoc' d a => f a)
+  createA @(Assoc' d) (species @a s :: forall a. Assoc' d a => f a)
 
 class AsSpeciesIf (c :: Maybe *) r a d where
   asSpeciesIf
