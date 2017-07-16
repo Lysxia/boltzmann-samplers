@@ -51,7 +51,7 @@ library
     hashable,
     hmatrix,
     ieee754,
-    one-liner,
+    one-liner < 0.9,
     unordered-containers,
     MonadRandom,
     mtl,
