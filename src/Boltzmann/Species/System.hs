@@ -309,8 +309,8 @@ newtype Free a = Free Free'
 
 data Free'
   = Pure
-  | Ap Free' Free'
-  | Alt Free' Free'
+  | Free' :*: Free'
+  | Free' :+: Free'
   | Empty
   | Pay Free'
   | S String
@@ -321,11 +321,11 @@ instance Functor Free where
 
 instance Applicative Free where
   pure _ = Free Pure
-  Free f <*> Free a = Free (Ap f a)
+  Free f <*> Free a = Free (f :*: a)
 
 instance Alternative Free where
   empty = Free Empty
-  Free a <|> Free b = Free (Alt a b)
+  Free a <|> Free b = Free (a :*: b)
 
 xFree :: Pay Free
 xFree (Free f) = Free (Pay f)
@@ -338,8 +338,16 @@ instance Aliasing r Free where
 freeSystem
   :: forall a r d b
   .  (Assoc a d b, KnownNat (Length d))
+  => System_ r Free d -> Vector Free'
+freeSystem (System_ sys) = unsafeCoerce (sys FreeAlias xFree
+  (unsafeCoerce (V.generate (fromIntegral $ natVal (Proxy @(Length d))) $ \i ->
+    Free (S (show i)))))
+
+freePointedSystem
+  :: forall a r d b
+  .  (Assoc a d b, KnownNat (Length d))
   => System_ r (Pointed Free) d -> Pointed Free b
-freeSystem (System_ sys) = species @a (sys (PAlias FreeAlias) (xPointed xFree)
+freePointedSystem (System_ sys) = species @a (sys (PAlias FreeAlias) (xPointed xFree)
   (unsafeCoerce (V.generate (fromIntegral $ natVal (Proxy @(Length d))) $ \i ->
     Pointed [Free (S (show (i, j :: Integer))) | j <- [0 ..]])))
 

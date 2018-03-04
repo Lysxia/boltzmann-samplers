@@ -15,7 +15,10 @@ import Boltzmann.Species
 import Boltzmann.Species.System
 import Test.Tree
 
-main = defaultMain
+main :: IO ()
+main = do
+ print (freeSystem @"tree" s)
+ defaultMain
   [ testCase "num" $
       [1, 98, 8] @=?
         V.toList (applySystemGF s 2 (V.fromList [3, 5, 7]))
