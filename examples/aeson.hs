@@ -23,8 +23,6 @@ import Boltzmann.Species.Generic
 import Data.Typeable
 import System.Exit
 
-deriving instance Generic Value
-
 instance
   ( Assoc Object d Object
   , Assoc Array d Array

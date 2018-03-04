@@ -7,7 +7,7 @@ executable aeson-example
   main-is: aeson.hs
   ghc-options: -Wall -fno-warn-partial-type-signatures
   build-depends:
-    aeson,
+    aeson >= 1.2.1.0,
     base,
     boltzmann-samplers,
     unordered-containers,
