@@ -29,7 +29,6 @@ import Data.Proxy
 import Data.Type.Equality
 import Data.Vector (Vector)
 import GHC.Exts (Constraint)
-import GHC.Prim (Any)
 import GHC.TypeLits
 import Numeric.Natural
 import Unsafe.Coerce
@@ -42,6 +41,7 @@ import Data.TypeMap.Vector (TypeVector)
 import qualified Data.TypeMap.List as TL
 import qualified Data.TypeMap.Vector as TV
 
+import Boltzmann.Internal.Compat (Any)
 import Boltzmann.Data.Common (binomial)
 import Boltzmann.Options
 import Boltzmann.Solver

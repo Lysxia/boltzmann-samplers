@@ -37,6 +37,7 @@ library
     Boltzmann.Generic.Oracle
     Boltzmann.Generic.Sampler
     Boltzmann.Generic.Types
+    Boltzmann.Internal.Compat
     Boltzmann.Options
     Boltzmann.Solver
     Boltzmann.Species
