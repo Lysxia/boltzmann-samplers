@@ -21,10 +21,12 @@ import Data.Hashable ( Hashable )
 import Data.HashMap.Lazy ( HashMap )
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe ( fromJust, isJust )
-import Data.Monoid
+import Data.Monoid hiding ((<>))
+import Data.Semigroup
 import qualified Data.Vector as V
 import GHC.Generics ( Generic )
 import Numeric.AD
+
 import Boltzmann.Data.Common
 import Boltzmann.Data.Types
 import Boltzmann.Solver
@@ -97,10 +99,13 @@ type Ix = Int
 data Nat = Zero | Succ Nat
   deriving (Eq, Ord, Show)
 
+instance Semigroup Nat where
+  (<>) (Succ n) = Succ . (<>) n
+  (<>) Zero = id
+
 instance Monoid Nat where
   mempty = Zero
-  mappend (Succ n) = Succ . mappend n
-  mappend Zero = id
+  mappend = (<>)
 
 natToInt :: Nat -> Int
 natToInt Zero = 0
