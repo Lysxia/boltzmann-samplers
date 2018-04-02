@@ -1,4 +1,4 @@
-Boltzmann samplers [![Hackage](https://img.shields.io/hackage/v/boltzmann-samplers.svg)](https://hackage.haskell.org/package/generic-random) [![Build Status](https://travis-ci.org/Lysxia/generic-random.svg)](https://travis-ci.org/Lysxia/boltzmann-samplers)
+Boltzmann samplers [![Hackage](https://img.shields.io/hackage/v/boltzmann-samplers.svg)](https://hackage.haskell.org/package/boltzmann-samplers) [![Build Status](https://travis-ci.org/Lysxia/boltzmann-samplers.svg)](https://travis-ci.org/Lysxia/boltzmann-samplers)
 ==================
 
 `Boltzmann.Data`
