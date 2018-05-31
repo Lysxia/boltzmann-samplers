@@ -52,3 +52,9 @@ References
   is taken from
   [Boltzmann Oracle for Combinatorial Systems](http://www.dmtcs.org/pdfpapers/dmAI0132.pdf),
   C. Pivoteau, B. Salvy, M. Soria.
+
+See also
+--------
+
+- [boltzmann-brain](https://hackage.haskell.org/package/boltzmann-brain-1.3.1.3),
+  Boltzmann sampler compiler for combinatorial systems.
